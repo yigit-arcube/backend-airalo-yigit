@@ -1,39 +1,5 @@
-# dependencies
 node_modules/
-
-# logs
-logs/
-*.log
-
-# runtime data & pids
-pids/
-*.pid
-*.seed
-
-# test & coverage output
-coverage/
-*.lcov
-
-# builds and temp files
 dist/
-build/
-tmp/
-temp/
-
-# env files
-.env*
-!.env.example
-
-# cache
-.npm
-.eslintcache
-
-# OS and editor junk
+*.log
+.env
 .DS_Store
-Thumbs.db
-.idea/
-.vscode/
-*.sublime*
-
-# TypeScript
-*.tsbuildinfo

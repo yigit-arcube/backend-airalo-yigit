@@ -136,7 +136,7 @@ decrypt(encryptedText: string): string {
     }
   }
 
-  // verify data integrity with HMAC -- ensures data hasn't been tampered with
+  // generate HMAC -- ensures data hasn't been tampered with
   generateHMAC(data: string, secret?: string): string {
     try {
       const key = secret || this.secretKey.toString('hex');

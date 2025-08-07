@@ -64,14 +64,14 @@ export class CancellationCommandInvoker {
     console.log('retry mechanism not implemented in this demo');
   }
 
-  getAuditTrail(): any[] {
+  getAuditTrail(): any[] { // not implemented audit viewing in console nor frontend
     return this.executedCommands.map(cmd => ({
       ...cmd.getAuditInfo(),
       executedAt: new Date()
     }));
   }
 
-  clearAuditTrail(): void {
+  clearAuditTrail(): void { // since not implemented, also not in use
     this.executedCommands = [];
   }
 }

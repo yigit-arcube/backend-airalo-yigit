@@ -24,18 +24,5 @@ export class CancellationRepository extends BaseRepository<ICancellation> {
     });
   }
 
-  // find pending cancellations for retry mechanism
-  async findPendingCancellations(): Promise<ICancellation[]> {
-    return await this.model.find({ 
-      status: 'pending',
-      createdAt: { 
-        $lt: new Date(Date.now() - 5 * 60 * 1000) // Older than 5 minutes
-      }
-    });
-  }
 
-  // find cancellations by order ID for audit purposes
-  async findByOrderId(orderId: string): Promise<ICancellation[]> {
-    return await this.model.find({ orderId });
-  }
 }

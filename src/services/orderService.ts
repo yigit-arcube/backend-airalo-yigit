@@ -333,73 +333,7 @@ export class OrderService {
   }
 
   // validate if product can be cancelled based on policy and simStatus
-validateCancellationEligibility(product: any): { canCancel: boolean; reason?: string } {
-  try {
-    if (product.status === 'cancelled') {
-      return { canCancel: false, reason: 'product already cancelled' };
-    }
-
-    if (product.status === 'failed' || product.status === 'denied') {
-      return { canCancel: false, reason: 'product already failed/denied - no refund available' };
-    }
-
-    if (!product.cancellationPolicy?.canCancel) {
-      return { canCancel: false, reason: 'product not eligible for cancellation per policy' };
-    }
-
-    switch (product.provider) {
-      case 'airalo':
-        if (product.simStatus === 'active') {
-          return { canCancel: false, reason: 'eSIM already activated and in use' };
-        }
-        break;
-        
-      case 'mozio':
-        if (product.transferStatus === 'in_progress' || product.transferStatus === 'completed') {
-          return { canCancel: false, reason: 'transfer already in progress or completed' };
-        }
-        break;
-        
-      case 'dragonpass':
-        if (product.accessStatus === 'used' || product.accessStatus === 'expired') {
-          return { canCancel: false, reason: 'lounge access already used or expired' };
-        }
-        break;
-        
-      default:
-        console.log(`Warning: Unknown provider ${product.provider}, using generic validation`);
-        break;
-    }
-
-    if (product.cancellationPolicy.cancelCondition === 'only_if_not_activated') {
-      const now = new Date();
-      const serviceDate = new Date(product.serviceDateTime);
-      const hoursSinceService = (now.getTime() - serviceDate.getTime()) / (1000 * 60 * 60);
-      
-      const sortedWindows = product.cancellationPolicy.windows.sort((a: any, b: any) => 
-        (a.hoursBeforeActivation || 0) - (b.hoursBeforeActivation || 0)
-      );
-      
-      let applicableWindow: any = null;
-      for (const window of sortedWindows) {
-        const windowHours = window.hoursBeforeActivation || 0;
-        if (hoursSinceService <= windowHours) {
-          applicableWindow = window;
-          break;
-        }
-      }
-      
-      if (!applicableWindow || applicableWindow.refundPercentage === 0) {
-        return { canCancel: false, reason: 'cancellation window has expired' };
-      }
-    }
-
-    return { canCancel: true };
-  } catch (error) {
-    console.error('cancellation eligibility validation failed:', error);
-    return { canCancel: false, reason: 'validation error' };
-  }
-}
+  //validateCancellationEligibility(product: any): { canCancel: boolean; reason?: string } we are using this same function at orderController.ts
 
   // generate unique pnr for new orders
   private generatePNR(): string {

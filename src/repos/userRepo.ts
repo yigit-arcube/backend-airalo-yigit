@@ -83,8 +83,5 @@ export class UserRepository extends BaseRepository<IUser> {
     return await InvitationCode.find({ createdBy: adminId }).sort({ createdAt: -1 });
   }
 
-  // get all invitation codes for admin dashboard
-  async getAllInvitations(): Promise<any[]> {
-    return await InvitationCode.find().sort({ createdAt: -1 });
-  }
+
 }

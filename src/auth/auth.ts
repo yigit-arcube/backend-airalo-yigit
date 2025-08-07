@@ -159,7 +159,7 @@ export const validateCancellationRequest = (req: Request, res: Response, next: N
 };
 
 // error handling with correlation ID logging -- ensures errors are properly tracked
-export const errorHandler = (error: Error, req: Request, res: Response, next: NextFunction): void => {
+export const errorHandler = (error: Error, req: Request, res: Response, next: NextFunction): void => { // never got to use properly
   const correlationId = req.correlationId || 'unknown';
   
   console.error(`[${correlationId}] Error:`, error.message);

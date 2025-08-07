@@ -23,8 +23,4 @@ export abstract class BaseRepository<T extends Document> {
     const result = await this.model.findByIdAndDelete(id);
     return !!result;
   }
-
-  async findAll(): Promise<T[]> {
-    return await this.model.find();
-  }
 }

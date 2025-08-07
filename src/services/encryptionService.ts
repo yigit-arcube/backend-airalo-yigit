@@ -136,31 +136,31 @@ decrypt(encryptedText: string): string {
     }
   }
 
-  // generate HMAC -- ensures data hasn't been tampered with
-  generateHMAC(data: string, secret?: string): string {
-    try {
-      const key = secret || this.secretKey.toString('hex');
-      return crypto
-        .createHmac('sha256', key)
-        .update(data)
-        .digest('hex');
-    } catch (error) {
-      console.error('HMAC generation failed:', error);
-      throw new Error('Failed to generate HMAC');
-    }
-  }
+  // // generate HMAC -- ensures data hasn't been tampered with
+  // generateHMAC(data: string, secret?: string): string {
+  //   try {
+  //     const key = secret || this.secretKey.toString('hex');
+  //     return crypto
+  //       .createHmac('sha256', key)
+  //       .update(data)
+  //       .digest('hex');
+  //   } catch (error) {
+  //     console.error('HMAC generation failed:', error);
+  //     throw new Error('Failed to generate HMAC');
+  //   }
+  // }
 
-  // verify HMAC integrity -- validates data integrity
-  verifyHMAC(data: string, signature: string, secret?: string): boolean {
-    try {
-      const expectedSignature = this.generateHMAC(data, secret);
-      return crypto.timingSafeEqual(
-        Buffer.from(signature, 'hex'),
-        Buffer.from(expectedSignature, 'hex')
-      );
-    } catch (error) {
-      console.error('HMAC verification failed:', error);
-      return false;
-    }
-  }
+  // // verify HMAC integrity -- validates data integrity
+  // verifyHMAC(data: string, signature: string, secret?: string): boolean {
+  //   try {
+  //     const expectedSignature = this.generateHMAC(data, secret);
+  //     return crypto.timingSafeEqual(
+  //       Buffer.from(signature, 'hex'),
+  //       Buffer.from(expectedSignature, 'hex')
+  //     );
+  //   } catch (error) {
+  //     console.error('HMAC verification failed:', error);
+  //     return false;
+  //   }
+  // }
 }

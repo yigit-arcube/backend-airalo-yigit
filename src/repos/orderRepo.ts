@@ -52,24 +52,11 @@ export class OrderRepository extends BaseRepository<IOrder> {
     return await this.model.findOne({ pnr });
   }
 
-  // get orders with specific product status for dashboard stats
-  async getOrdersByProductStatus(status: string): Promise<IOrder[]> {
-    return await this.model.find({ 
-      'products.status': status   
-    });
-  }
 
   // get orders for specific customer by userId
   async getOrdersByCustomerId(customerId: string): Promise<IOrder[]> {
     return await this.model.find({ 
       customerId: customerId 
-    }).sort({ createdAt: -1 });
-  }
-
-  // get orders for specific customer by email (keep for backward compatibility)
-  async getOrdersByCustomerEmail(email: string): Promise<IOrder[]> {
-    return await this.model.find({ 
-      'customer.email': email 
     }).sort({ createdAt: -1 });
   }
 
@@ -85,10 +72,6 @@ export class OrderRepository extends BaseRepository<IOrder> {
     return { orders, total };
   }
 
-  // get orders by status for filtering
-  async getOrdersByStatus(status: string): Promise<IOrder[]> {
-    return await this.model.find({ status }).sort({ createdAt: -1 });
-  }
 
   // get detailed stats for partner dashboard
   async getPartnerStats(): Promise<any> {

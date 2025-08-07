@@ -1,14 +1,17 @@
 import { OrderRepository } from '../repos/orderRepo';
 import { IOrder, IProduct } from '../models/orderModel';
 import { EncryptionService } from './encryptionService';
+import { WebhookService } from './webhookService';
 
 export class OrderService {
   private orderRepo: OrderRepository;
   private encryptionService: EncryptionService;
+  private webhookService: WebhookService;// new webhook support
 
   constructor() {
     this.orderRepo = new OrderRepository();
     this.encryptionService = new EncryptionService();
+    this.webhookService = new WebhookService();
   }
 
   // create new order with airalo products for testing cancellation
@@ -108,33 +111,41 @@ export class OrderService {
   private startAutomaticStatusTimer(orderId: string, productId: string): void {
     setTimeout(async () => {
       try {
-        // check if product status is still pending (not manually changed by partner)
         const currentProduct = await this.orderRepo.findProductById(orderId, productId);
         if (!currentProduct || currentProduct.status !== 'pending') {
-          return; // status was manually changed by partner
+          return;
         }
-
-        // randomized status determination
+  
         const randomValue = Math.random();
         let newStatus: string;
-
-        if (randomValue < 0.7) { // 70% success
+  
+        if (randomValue < 0.7) {
           newStatus = 'success';
-        } else if (randomValue < 0.85) { // 15% failed
+        } else if (randomValue < 0.85) {
           newStatus = 'failed';
-        } else { // 15% denied
+        } else {
           newStatus = 'denied';
         }
-
+  
         await this.orderRepo.updateProductStatus(orderId, productId, newStatus);
         console.log(`automatic status update: order ${orderId}, product ${productId} -> ${newStatus}`);
+  
+        //webhook creation for failed and denied orders
+        if (newStatus === 'failed' || newStatus === 'denied') {
+          await this.webhookService.triggerWebhooks('order.failed', {
+            orderId,
+            productId,
+            status: newStatus,
+            reason: newStatus === 'failed' ? 'Payment processing failed' : 'Order rejected by provider',
+            timestamp: new Date().toISOString()
+          });
+        }
 
-      } catch (error) {
+      }catch (error) {
         console.error('automatic status update failed:', error);
       }
-    }, 15000); // 15 seconds
+    }, 15000);
   }
-
   // activate eSIM (customer action)
   async activateEsim(orderId: string, productId: string, userRole: string): Promise<boolean> {
     try {

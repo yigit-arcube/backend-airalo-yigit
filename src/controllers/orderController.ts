@@ -219,11 +219,25 @@ export const updateProductStatus = async (req: Request, res: Response, next: Nex
       return;
     }
 
-    console.log(`[${correlationId}] manual status update by partner: ${orderId}/${productId} -> ${status}`);
+    console.log(`[${correlationId}] manual status update by partner: ${orderId}/${productId} -> ${status}`); 
 
     const success = await orderService.updateProductStatusManually(orderId, productId, status, req.user.id || req.user.userId);
 
     if (success) {
+      // this now triggers webhooks
+      if (status === 'cancelled') {
+        await webhookService.triggerWebhooks('order.partner_cancelled', {
+          orderId,
+          productId,
+          status,
+          revokedBy: req.user.id || req.user.userId,
+          revokedByRole: 'partner',
+          reason: 'Cancelled by partner',
+          correlationId,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       res.json({
         success: true,
         message: `Product status updated to ${status}`

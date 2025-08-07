@@ -38,7 +38,9 @@ router.post('/register',
       const validEvents = [
         'cancellation.success',
         'cancellation.failed', 
-        'cancellation.error'
+        'cancellation.error',
+        'order.failed',           
+        'order.partner_cancelled' //2 new events added, for feature support
       ];
       
       const invalidEvents = events.filter((event: string) => !validEvents.includes(event));

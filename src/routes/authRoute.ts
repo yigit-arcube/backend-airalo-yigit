@@ -4,6 +4,7 @@ import { UserRepository } from '../repos/userRepo';
 import { EncryptionService } from '../services/encryptionService';
 import { InvitationService } from '../services/invitationService';
 import { createRateLimit, authenticateJWT, authorize } from '../auth/auth';
+import bcrypt from 'bcryptjs';
 
 const router = Router();
 const userRepo = new UserRepository();
@@ -175,6 +176,188 @@ router.post('/login', authRateLimit, async (req, res) => {
     });
   }
 });
+
+// get user profile
+router.get('/profile', 
+  authenticateJWT, 
+  async (req, res) => {
+    try {
+      const user = await userRepo.findByEmail(req.user.email);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          createdAt: user.createdAt
+        }
+      });
+    } catch (error) {
+      console.error('Profile fetch failed:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch profile'
+      });
+    }
+  }
+);
+
+// update user profile
+router.put('/profile', 
+  authRateLimit,
+  authenticateJWT, 
+  async (req, res) => {
+    try {
+      const { firstName, lastName, newEmail, currentPassword, newPassword } = req.body;
+      const currentUser = await userRepo.findByEmail(req.user.email);
+
+      if (!currentUser) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+
+      // Prepare update data
+      const updateData: any = {};
+
+      // Update name fields
+      if (firstName && firstName.trim()) {
+        updateData.firstName = firstName.trim();
+      }
+      if (lastName && lastName.trim()) {
+        updateData.lastName = lastName.trim();
+      }
+
+      // Update email (check if new email is available)
+      if (newEmail && newEmail !== currentUser.email) {
+        const existingUser = await userRepo.findByEmail(newEmail);
+        if (existingUser) {
+          return res.status(409).json({
+            success: false,
+            error: 'Email already in use'
+          });
+        }
+        updateData.email = newEmail.toLowerCase().trim();
+      }
+
+      // Update password/PNR (require current password verification)
+      if (newPassword) {
+        if (!currentPassword) {
+          return res.status(400).json({
+            success: false,
+            error: 'Current password required to change password'
+          });
+        }
+
+        const isValidPassword = await userRepo.validatePassword(currentUser, currentPassword);
+        if (!isValidPassword) {
+          return res.status(401).json({
+            success: false,
+            error: 'Current password is incorrect'
+          });
+        }
+
+        // Hash new password
+        updateData.password = await bcrypt.hash(newPassword, 12);
+      }
+
+      // Update user in database
+      const updatedUser = await userRepo.update(currentUser._id.toString(), updateData);
+
+      console.log(`Profile updated for user: ${currentUser.email}`);
+
+      res.json({
+        success: true,
+        data: {
+          message: 'Profile updated successfully',
+          user: {
+            email: updatedUser?.email || currentUser.email,
+            firstName: updatedUser?.firstName,
+            lastName: updatedUser?.lastName,
+            role: updatedUser?.role
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('Profile update failed:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to update profile'
+      });
+    }
+  }
+);
+
+// change password only (simpler endpoint)
+router.put('/change-password', 
+  authRateLimit,
+  authenticateJWT, 
+  async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({
+          success: false,
+          error: 'Both current and new password are required'
+        });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
+          error: 'New password must be at least 6 characters'
+        });
+      }
+
+      const user = await userRepo.findByEmail(req.user.email);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+
+      const isValidPassword = await userRepo.validatePassword(user, currentPassword);
+      if (!isValidPassword) {
+        return res.status(401).json({
+          success: false,
+          error: 'Current password is incorrect'
+        });
+      }
+
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+      await userRepo.update(user._id.toString(), { password: hashedPassword });
+
+      console.log(`Password changed for user: ${user.email}`);
+
+      res.json({
+        success: true,
+        data: {
+          message: 'Password updated successfully'
+        }
+      });
+
+    } catch (error) {
+      console.error('Password change failed:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to change password'
+      });
+    }
+  }
+);
 
 // admin creates invitation codes for partner registration
 router.post('/admin/create-invitation', 

@@ -55,7 +55,7 @@ export class OrderRepository extends BaseRepository<IOrder> {
   // get orders with specific product status for dashboard stats
   async getOrdersByProductStatus(status: string): Promise<IOrder[]> {
     return await this.model.find({ 
-      'products.status': status 
+      'products.status': status   
     });
   }
 

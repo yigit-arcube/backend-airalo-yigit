@@ -21,7 +21,12 @@ export interface IProduct {
   };
   serviceDateTime: Date;
   activationDeadline?: Date;
-  simStatus?: 'ready_for_activation' | 'active' | 'cancelled';
+  
+  // Provider-specific status fields
+  simStatus?: 'ready_for_activation' | 'active' | 'cancelled'; // For Airalo eSIM products
+  transferStatus?: 'confirmed' | 'in_progress' | 'completed' | 'cancelled'; // For Mozio transfers
+  accessStatus?: 'confirmed' | 'used' | 'expired' | 'cancelled'; // For DragonPass lounge access
+  
   activatedAt?: Date;
   metadata: any;
 }
@@ -29,7 +34,7 @@ export interface IProduct {
 export interface IOrder extends Document {
   pnr: string;
   transactionId: string;
-  customerId: string; // added userid for easier product showin
+  customerId: string;
   customer: {
     email: string;
     firstName: string;
@@ -66,11 +71,24 @@ const ProductSchema = new Schema<IProduct>({
   },
   serviceDateTime: { type: Date, required: true },
   activationDeadline: { type: Date },
+  
+  // Provider-specific status fields (optional, only set for relevant providers)
   simStatus: {
     type: String,
     enum: ['ready_for_activation', 'active', 'cancelled'],
-    default: 'ready_for_activation'
+    required: false // Optional - only for Airalo eSIM products
   },
+  transferStatus: {
+    type: String,
+    enum: ['confirmed', 'in_progress', 'completed', 'cancelled'],
+    required: false // Optional - only for Mozio transfer products
+  },
+  accessStatus: {
+    type: String,
+    enum: ['confirmed', 'used', 'expired', 'cancelled'],
+    required: false // Optional - only for DragonPass lounge products
+  },
+  
   activatedAt: { type: Date },
   metadata: { type: Schema.Types.Mixed }
 });

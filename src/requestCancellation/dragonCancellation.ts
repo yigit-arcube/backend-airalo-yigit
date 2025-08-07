@@ -2,27 +2,22 @@ import { CancellationCommand } from './cancellationRequest';
 import { OrderRepository } from '../repos/orderRepo';
 import { CancellationRepository } from '../repos/cancellationRepo';
 
-interface AiraloApiResponse {
+interface DragonPassApiResponse {
   status: string;
   cancellation_id?: string;
-  order_id?: string;
-  order_code?: string;
-  package_id?: string;
-  iccid?: string;
+  booking_id?: string;
+  lounge_id?: string;
   refund_amount?: number;
   cancellation_fee?: number;
   currency?: string;
   refund_policy?: string;
   estimated_refund_time?: string;
   message: string;
-  sim_status?: string;
   error_code?: string;
-  policy_reason?: string;
-  activated_at?: string;
   retry_after?: number;
 }
 
-export class AiraloCancellationCommand extends CancellationCommand {
+export class DragonPassCancellationCommand extends CancellationCommand {
   private orderRepo: OrderRepository;
   private cancellationRepo: CancellationRepository;
 
@@ -44,43 +39,42 @@ export class AiraloCancellationCommand extends CancellationCommand {
         throw new Error('Product not found');
       }
 
-      if (product.provider !== 'airalo') {
-        throw new Error('Invalid provider for Airalo cancellation command');
+      if (product.provider !== 'dragonpass') {
+        throw new Error('Invalid provider for DragonPass cancellation command');
       }
 
       const cancellation = await this.cancellationRepo.createCancellationRequest({
         orderId: this.orderId,
         productId: this.productId,
         pnr: order.pnr,
-        provider: 'airalo',
+        provider: 'dragonpass',
         requestSource: 'api'
       });
 
       const refundCalculation = this.calculateRefund(product);
-      const airaloResponse = await this.callAiraloAPI(product, refundCalculation);
+      const dragonPassResponse = await this.callDragonPassAPI(product, refundCalculation);
 
       const updatedCancellation = await this.cancellationRepo.updateCancellationStatus(
         cancellation._id,
-        airaloResponse.status === 'success' ? 'success' : 'failed',
-        airaloResponse
+        dragonPassResponse.status === 'success' ? 'success' : 'failed',
+        dragonPassResponse
       );
 
-      if (airaloResponse.status === 'success') {
+      if (dragonPassResponse.status === 'success') {
         await this.orderRepo.updateProductStatus(this.orderId, this.productId, 'cancelled');
-        await this.orderRepo.updateSimStatus(this.orderId, this.productId, 'cancelled');
       }
 
       return {
-        success: airaloResponse.status === 'success',
+        success: dragonPassResponse.status === 'success',
         cancellationId: cancellation.cancellationId,
-        refundAmount: airaloResponse.refund_amount || 0,
-        cancellationFee: airaloResponse.cancellation_fee || 0,
-        message: airaloResponse.message,
-        vendorResponse: airaloResponse
+        refundAmount: dragonPassResponse.refund_amount || 0,
+        cancellationFee: dragonPassResponse.cancellation_fee || 0,
+        message: dragonPassResponse.message,
+        vendorResponse: dragonPassResponse
       };
 
     } catch (error) {
-      console.error('Airalo cancellation command failed:', error);
+      console.error('DragonPass cancellation command failed:', error);
       throw error;
     }
   }
@@ -89,12 +83,6 @@ export class AiraloCancellationCommand extends CancellationCommand {
     const now = new Date();
     const serviceDate = new Date(product.serviceDateTime);
     const hoursAfterService = (now.getTime() - serviceDate.getTime()) / (1000 * 60 * 60);
-    
-    const isActivated = product.simStatus === 'active';
-    
-    if (isActivated) {
-      return { refundAmount: 0, cancellationFee: 0, refundPercentage: 0 };
-    }
 
     for (const window of product.cancellationPolicy.windows) {
       if (hoursAfterService <= (window.hoursBeforeActivation || 0)) {
@@ -109,25 +97,8 @@ export class AiraloCancellationCommand extends CancellationCommand {
     return { refundAmount: 0, cancellationFee: product.price.amount, refundPercentage: 0 };
   }
 
-  private async callAiraloAPI(product: any, refundCalc: any): Promise<AiraloApiResponse> {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    const isActivated = product.simStatus === 'active';
-    
-    if (isActivated) {
-      return {
-        status: 'error',
-        error_code: 'SIM_ALREADY_ACTIVATED',
-        order_id: product.metadata.orderId,
-        order_code: product.metadata.orderCode,      
-        package_id: product.metadata.packageId,       
-        iccid: product.metadata.iccid,                
-        message: 'eSIM cannot be cancelled - already activated and in use',
-        policy_reason: 'Digital products cannot be refunded once activated',
-        activated_at: product.activatedAt || new Date().toISOString(),
-        sim_status: 'active'
-      };
-    }
+  private async callDragonPassAPI(product: any, refundCalc: any): Promise<DragonPassApiResponse> {
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
     if (Math.random() < 0.1) {
       return {
@@ -141,44 +112,38 @@ export class AiraloCancellationCommand extends CancellationCommand {
     if (refundCalc.refundPercentage === 100) {
       return {
         status: 'success',
-        cancellation_id: `CXL_AL_${Date.now()}`,
-        order_id: product.metadata.orderId,
-        order_code: product.metadata.orderCode,
-        package_id: product.metadata.packageId,
-        iccid: product.metadata.iccid,
+        cancellation_id: `CXL_DP_${Date.now()}`,
+        booking_id: product.metadata.accessCode,
+        lounge_id: product.metadata.loungeId,
         refund_amount: refundCalc.refundAmount,
         cancellation_fee: 0,
         currency: product.price.currency,
-        refund_policy: 'full_refund_not_activated',
-        estimated_refund_time: '1-3 business days',
-        message: 'eSIM cancelled successfully - not yet activated',
-        sim_status: 'cancelled'
+        refund_policy: 'full_refund',
+        estimated_refund_time: '5-7 business days',
+        message: 'Lounge access cancelled successfully'
       };
     } else if (refundCalc.refundPercentage === 75) {
       return {
         status: 'success',
-        cancellation_id: `CXL_AL_${Date.now()}`,
-        order_id: product.metadata.orderId,
-        order_code: product.metadata.orderCode,
-        package_id: product.metadata.packageId,
-        iccid: product.metadata.iccid,
+        cancellation_id: `CXL_DP_${Date.now()}`,
+        booking_id: product.metadata.accessCode,
+        lounge_id: product.metadata.loungeId,
         refund_amount: refundCalc.refundAmount,
         cancellation_fee: refundCalc.cancellationFee,
         currency: product.price.currency,
         refund_policy: '75_percent_refund',
-        estimated_refund_time: '1-3 business days',
-        message: 'eSIM cancelled with processing fee - not activated',
-        sim_status: 'cancelled'
+        estimated_refund_time: '5-7 business days',
+        message: 'Lounge access cancelled with processing fee'
       };
     } else {
       return {
         status: 'error',
         error_code: 'CANCELLATION_WINDOW_EXPIRED',
-        order_id: product.metadata.orderId,
-        order_code: product.metadata.orderCode,
-        package_id: product.metadata.packageId,
+        booking_id: product.metadata.accessCode,
         message: 'Cancellation window has expired',
-        policy_reason: 'Too close to activation deadline for refund'
+        refund_amount: 0,
+        cancellation_fee: product.price.amount,
+        currency: product.price.currency
       };
     }
   }
@@ -186,10 +151,9 @@ export class AiraloCancellationCommand extends CancellationCommand {
   async undo(): Promise<void> {
     try {
       await this.orderRepo.updateProductStatus(this.orderId, this.productId, 'confirmed');
-      await this.orderRepo.updateSimStatus(this.orderId, this.productId, 'ready_for_activation');
-      console.log(`Airalo cancellation undone for order ${this.orderId}, product ${this.productId}`);
+      console.log(`DragonPass cancellation undone for order ${this.orderId}, product ${this.productId}`);
     } catch (error) {
-      console.error('Failed to undo Airalo cancellation:', error);
+      console.error('Failed to undo DragonPass cancellation:', error);
     }
   }
 }

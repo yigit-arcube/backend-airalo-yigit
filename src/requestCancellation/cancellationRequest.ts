@@ -19,12 +19,10 @@ export abstract class CancellationCommand implements ICancellationCommand {
 
   abstract execute(): Promise<any>;
   
-  // base undo implementation can be overridden by specific commands
   async undo(): Promise<void> {
     console.log(`undoing cancellation for order ${this.orderId}, product ${this.productId}`);
   }
 
-  // standard audit information all commands should provide
   getAuditInfo(): any {
     return {
       orderId: this.orderId,
@@ -36,11 +34,9 @@ export abstract class CancellationCommand implements ICancellationCommand {
   }
 }
 
-// command invoker of cancellation commands(from user, admin or B2B partner, with fraud detection(?))
 export class CancellationCommandInvoker {
   private executedCommands: ICancellationCommand[] = [];
 
-  // execute a cancellation command with error handling and audit trail
   async executeCommand(command: ICancellationCommand): Promise<any> {
     try {
       console.log('executing cancellation command:', command.getAuditInfo());
@@ -54,7 +50,6 @@ export class CancellationCommandInvoker {
     } catch (error) {
       console.error('cancellation command failed:', error);
       
-      // attempt to undo any partial changes
       try {
         await command.undo();
       } catch (undoError) {
@@ -65,13 +60,10 @@ export class CancellationCommandInvoker {
     }
   }
 
-  // retry failed commands with exponential backoff
   async retryFailedCommands(): Promise<void> {
-    // this would typically be called by a scheduled job
     console.log('retry mechanism not implemented in this demo');
   }
 
-  // get audit trail of all executed commands
   getAuditTrail(): any[] {
     return this.executedCommands.map(cmd => ({
       ...cmd.getAuditInfo(),
@@ -79,7 +71,6 @@ export class CancellationCommandInvoker {
     }));
   }
 
-  // clear audit trail for testing purposes
   clearAuditTrail(): void {
     this.executedCommands = [];
   }

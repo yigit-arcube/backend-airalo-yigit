@@ -15,7 +15,7 @@ export class WebhookService {
   async registerWebhook(url: string, events: string[], createdBy: string): Promise<any> {
     try {
       const webhook = await this.webhookRepo.createWebhook({
-        url,
+        url,  
         events,
         createdBy
       });
@@ -34,6 +34,7 @@ export class WebhookService {
 
   // trigger webhook notifications based on cancellation status -- main webhook execution logic
   async triggerWebhooks(event: string, data: any): Promise<void> {
+    //console.log("this get called?111");
     try {
       const webhooks = await this.webhookRepo.findActiveWebhooksByEvent(event);
       
@@ -53,6 +54,7 @@ export class WebhookService {
   // send individual webhook notification with security signature
   private async sendWebhookNotification(webhook: any, event: string, data: any): Promise<void> {
     try {
+      console.log('are we even getting to this point');
       const payload = JSON.stringify({
         event,
         data,
@@ -85,7 +87,7 @@ export class WebhookService {
     await new Promise(resolve => setTimeout(resolve, 100));
     
     // simulate webhook delivery success/failure
-    const success = Math.random() > 0.1; // 90% success rate
+    const success = Math.random() > 0.1; // 90% success rate for testing, after it fails, it should retry, currently its not, --tbd
     
     if (success) {
       console.log(`✓ Webhook delivered successfully to ${url}`);

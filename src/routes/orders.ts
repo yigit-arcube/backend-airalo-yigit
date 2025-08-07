@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { 
   createOrder, 
   getOrder, 
-  cancelOrder, 
+  cancelOrder,
+  bulkCancelOrder,
   getOrderStats,
   getPartnerStats,
   getCustomerOrders,
@@ -97,6 +98,9 @@ router.post('/cancel',
   validateCancellationRequest,
   cancelOrder
 );
+
+//new cncellation endpoint for bulk cancelling
+router.post('/bulk-cancel', authMiddleware, authorize(['customer', 'admin', 'partner']), bulkCancelOrder);
 
 // admin dashboard statistics
 router.get('/admin/stats',

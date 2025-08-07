@@ -9,6 +9,22 @@ export default function ArcubeApp() {
   const [response, setResponse] = useState('');
   const [error, setError] = useState('');
 
+  // Profile management state
+  const [profileData, setProfileData] = useState({
+    firstName: '',
+    lastName: '',
+    email: ''
+  });
+
+  const [profileForm, setProfileForm] = useState({
+    firstName: '',
+    lastName: '',
+    newEmail: '',
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+
   const debugToken = (token) => {
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
@@ -218,6 +234,116 @@ export default function ArcubeApp() {
   const clearMessages = () => {
     setResponse('');
     setError('');
+  };
+
+  // load user profile
+  const loadUserProfile = async () => {
+    if (!token) return;
+    
+    try {
+      const res = await fetch(`${API_BASE}/auth/profile`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (res.ok) {
+        const result = await res.json();
+        const userData = result.data;
+        setProfileData(userData);
+        setProfileForm({
+          firstName: userData.firstName || '',
+          lastName: userData.lastName || '',
+          newEmail: userData.email || '',
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: ''
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load profile:', error);
+    }
+  };
+
+  // update profile handler
+  const handleUpdateProfile = async () => {
+    setLoading(true);
+    clearMessages();
+    
+    try {
+      // Validate form
+      if (profileForm.newPassword && profileForm.newPassword !== profileForm.confirmPassword) {
+        setError('New passwords do not match');
+        setLoading(false);
+        return;
+      }
+
+      if (profileForm.newPassword && !profileForm.currentPassword) {
+        setError('Current password required to change password');
+        setLoading(false);
+        return;
+      }
+
+      const updateData = {
+        firstName: profileForm.firstName,
+        lastName: profileForm.lastName,
+        newEmail: profileForm.newEmail !== profileData.email ? profileForm.newEmail : undefined,
+        currentPassword: profileForm.currentPassword || undefined,
+        newPassword: profileForm.newPassword || undefined
+      };
+
+      // Remove undefined fields
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === undefined) {
+          delete updateData[key];
+        }
+      });
+
+      const res = await fetch(`${API_BASE}/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(updateData)
+      });
+      
+      const result = await res.json();
+      
+      if (result.success) {
+        setResponse('Profile updated successfully!');
+        
+        // Update user state if email changed
+        if (profileForm.newEmail !== profileData.email) {
+          setUser(prev => ({
+            ...prev,
+            email: profileForm.newEmail
+          }));
+        }
+        
+        // Update user state with new name
+        setUser(prev => ({
+          ...prev,
+          firstName: profileForm.firstName,
+          lastName: profileForm.lastName
+        }));
+        
+        // Reload profile data
+        loadUserProfile();
+        
+        // Clear password fields
+        setProfileForm(prev => ({
+          ...prev,
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: ''
+        }));
+        
+      } else {
+        setError(result.error || 'Profile update failed');
+      }
+    } catch (error) {
+      setError('Network error. Please try again.');
+    }
+    setLoading(false);
   };
 
   // login handler
@@ -652,6 +778,7 @@ export default function ArcubeApp() {
       if (user.role === 'customer') loadCustomerOrders();
       if (user.role === 'admin') loadAdminData();
       if (user.role === 'partner') loadPartnerData();
+      loadUserProfile(); // Load profile data
     }
   }, [user]);
 
@@ -663,12 +790,14 @@ export default function ArcubeApp() {
     setCurrentView('login');
     setResponse('Logged out successfully');
     
-    setCustomerOrders([]);
+    setCustomerOrders([]); // clearing out all the variables to logout securely
     setAdminStats({});
     setWebhooks([]);
     setPartnerStats([]);
     setInvitationCode('');
     setSelectedProducts([]);
+    setProfileData({ firstName: '', lastName: '', email: '' });
+    setProfileForm({ firstName: '', lastName: '', newEmail: '', currentPassword: '', newPassword: '', confirmPassword: '' });
   };
 
   // navigation handler
@@ -810,570 +939,707 @@ export default function ArcubeApp() {
                     placeholder="Enter your email"
                     value={signupData.email}
                     onChange={(e) => setSignupData({...signupData, email: e.target.value})}
-                  />
-                </div>
+                 />
+               </div>
 
-                <div className="form-group">
-                  <label>Password</label>
-                  <input
-                    type="password"
-                    placeholder="Enter your PNR code"
-                    value={signupData.password}
-                    onChange={(e) => setSignupData({...signupData, password: e.target.value})}
-                  />
-                </div>
+               <div className="form-group">
+                 <label>Password</label>
+                 <input
+                   type="password"
+                   placeholder="Enter your PNR code"
+                   value={signupData.password}
+                   onChange={(e) => setSignupData({...signupData, password: e.target.value})}
+                 />
+               </div>
 
-                {signupData.isPartner && (
-                  <div className="form-group partner-invite">
-                    <label>Invitation Code</label>
-                    <input
-                      type="text"
-                      placeholder="Enter invitation code"
-                      value={signupData.invitationCode}
-                      onChange={(e) => setSignupData({...signupData, invitationCode: e.target.value})}
-                    />
-                    <small>Required for partner registration</small>
-                  </div>
-                )}
+               {signupData.isPartner && (
+                 <div className="form-group partner-invite">
+                   <label>Invitation Code</label>
+                   <input
+                     type="text"
+                     placeholder="Enter invitation code"
+                     value={signupData.invitationCode}
+                     onChange={(e) => setSignupData({...signupData, invitationCode: e.target.value})}
+                   />
+                   <small>Required for partner registration</small>
+                 </div>
+               )}
 
-                <button 
-                  onClick={handleSignup} 
-                  disabled={loading}
-                  className="btn btn-success btn-full"
-                >
-                  {loading ? 'Creating Account...' : 'Create Account'}
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="main-content">
-            <nav className="sidebar">
-              {user.role === 'customer' && (
-                <>
-                  <button 
-                    className={`nav-btn ${currentView === 'my-orders' ? 'active' : ''}`}
-                    onClick={() => navigate('my-orders')}
-                  >
-                    My Orders
-                  </button>
-                  <button 
-                    className={`nav-btn ${currentView === 'create-order' ? 'active' : ''}`}
-                    onClick={() => navigate('create-order')}
-                  >
-                    Buy Ancillaries
-                  </button>
-                </>
-              )}
-              
-              {user.role === 'admin' && (
-                <>
-                  <button 
-                    className={`nav-btn ${currentView === 'admin-dashboard' ? 'active' : ''}`}
-                    onClick={() => navigate('admin-dashboard')}
-                  >
-                    Dashboard
-                  </button>
-                  <button 
-                    className={`nav-btn ${currentView === 'admin-invitations' ? 'active' : ''}`}
-                    onClick={() => navigate('admin-invitations')}
-                  >
-                    Invitations
-                  </button>
-                  <button 
-                    className={`nav-btn ${currentView === 'admin-webhooks' ? 'active' : ''}`}
-                    onClick={() => navigate('admin-webhooks')}
-                  >
-                    Webhooks
-                  </button>
-                </>
-              )}
+               <button 
+                 onClick={handleSignup} 
+                 disabled={loading}
+                 className="btn btn-success btn-full"
+               >
+                 {loading ? 'Creating Account...' : 'Create Account'}
+               </button>
+             </div>
+           )}
+         </div>
+       ) : (
+         <div className="main-content">
+           <nav className="sidebar">
+             {user.role === 'customer' && (
+               <>
+                 <button 
+                   className={`nav-btn ${currentView === 'my-orders' ? 'active' : ''}`}
+                   onClick={() => navigate('my-orders')}
+                 >
+                   My Orders
+                 </button>
+                 <button 
+                   className={`nav-btn ${currentView === 'create-order' ? 'active' : ''}`}
+                   onClick={() => navigate('create-order')}
+                 >
+                   Buy Ancillaries
+                 </button>
+                 <button 
+                   className={`nav-btn ${currentView === 'profile' ? 'active' : ''}`}
+                   onClick={() => navigate('profile')}
+                 >
+                   Profile Settings
+                 </button>
+               </>
+             )}
+             
+             {user.role === 'admin' && (
+               <>
+                 <button 
+                   className={`nav-btn ${currentView === 'admin-dashboard' ? 'active' : ''}`}
+                   onClick={() => navigate('admin-dashboard')}
+                 >
+                   Dashboard
+                 </button>
+                 <button 
+                   className={`nav-btn ${currentView === 'admin-invitations' ? 'active' : ''}`}
+                   onClick={() => navigate('admin-invitations')}
+                 >
+                   Invitations
+                 </button>
+                 <button 
+                   className={`nav-btn ${currentView === 'admin-webhooks' ? 'active' : ''}`}
+                   onClick={() => navigate('admin-webhooks')}
+                 >
+                   Webhooks
+                 </button>
+                 <button 
+                   className={`nav-btn ${currentView === 'profile' ? 'active' : ''}`}
+                   onClick={() => navigate('profile')}
+                 >
+                   Profile Settings
+                 </button>
+               </>
+             )}
 
-              {user.role === 'partner' && (
-                <>
-                  <button 
-                    className={`nav-btn ${currentView === 'partner-dashboard' ? 'active' : ''}`}
-                    onClick={() => navigate('partner-dashboard')}
-                  >
-                    Dashboard
-                  </button>
-                  <button 
-                    className={`nav-btn ${currentView === 'partner-orders' ? 'active' : ''}`}
-                    onClick={() => navigate('partner-orders')}
-                  >
-                    Manage Orders
-                  </button>
-                </>
-              )}
-            </nav>
+             {user.role === 'partner' && (
+               <>
+                 <button 
+                   className={`nav-btn ${currentView === 'partner-dashboard' ? 'active' : ''}`}
+                   onClick={() => navigate('partner-dashboard')}
+                 >
+                   Dashboard
+                 </button>
+                 <button 
+                   className={`nav-btn ${currentView === 'partner-orders' ? 'active' : ''}`}
+                   onClick={() => navigate('partner-orders')}
+                 >
+                   Manage Orders
+                 </button>
+                 <button 
+                   className={`nav-btn ${currentView === 'profile' ? 'active' : ''}`}
+                   onClick={() => navigate('profile')}
+                 >
+                   Profile Settings
+                 </button>
+               </>
+             )}
+           </nav>
 
-            <div className="content-area">
-              {/* Customer Views */}
-              {currentView === 'my-orders' && user.role === 'customer' && (
-                <div className="section">
-                  <h2>My Orders</h2>
-                  {customerOrders.length === 0 ? (
-                    <div className="empty-state">
-                      <p>No orders yet. Get your first travel services!</p>
-                      <button 
-                        onClick={() => navigate('create-order')}
-                        className="btn btn-primary"
-                      >
-                        Buy Services
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="orders-grid">
-                      {customerOrders.map((order) => {
-                        const summary = getOrderSummary(order.products);
-                        return (
-                          <div key={order._id} className="order-card">
-                            <div className="order-header">
-                              <div className="order-header-main">
-                                <h3>PNR: {order.pnr}</h3>
-                                <span className="order-date">
-                                  {new Date(order.createdAt).toLocaleDateString()}
-                                </span>
-                              </div>
-                              <div className="order-summary-badges">
-                                <span className="summary-badge">
-                                  {summary.totalCount} product{summary.totalCount > 1 ? 's' : ''}
-                                </span>
-                                <span className="summary-badge total-amount">
-                                  Total: ${summary.totalAmount}
-                                </span>
-                                {summary.activeCount > 0 && (
-                                  <span className="summary-badge active-count">
-                                    {summary.activeCount} active
-                                  </span>
-                                )}
-                                {summary.cancelledCount > 0 && (
-                                  <span className="summary-badge cancelled-count">
-                                    {summary.cancelledCount} cancelled
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            
-                            {/* Bulk actions for orders with multiple products */}
-                            {order.products.length > 1 && (
-                              <div className="bulk-actions">
-                                <button 
-                                  onClick={() => handleBulkCancelOrder(order)}
-                                  className="btn btn-sm btn-warning"
-                                  disabled={loading || order.products.filter(p => 
-                                    p.simStatus !== 'active' && 
-                                    p.status !== 'cancelled' && 
-                                    p.status !== 'failed' && 
-                                    p.status !== 'denied'
-                                  ).length === 0}
-                                >
-                                  Cancel All Available Products
-                                </button>
-                              </div>
-                            )}
+           <div className="content-area">
+             {/* Customer Views */}
+             {currentView === 'my-orders' && user.role === 'customer' && (
+               <div className="section">
+                 <h2>My Orders</h2>
+                 {customerOrders.length === 0 ? (
+                   <div className="empty-state">
+                     <p>No orders yet. Get your first travel services!</p>
+                     <button 
+                       onClick={() => navigate('create-order')}
+                       className="btn btn-primary"
+                     >
+                       Buy Services
+                     </button>
+                   </div>
+                 ) : (
+                   <div className="orders-grid">
+                     {customerOrders.map((order) => {
+                       const summary = getOrderSummary(order.products);
+                       return (
+                         <div key={order._id} className="order-card">
+                           <div className="order-header">
+                             <div className="order-header-main">
+                               <h3>PNR: {order.pnr}</h3>
+                               <span className="order-date">
+                                 {new Date(order.createdAt).toLocaleDateString()}
+                               </span>
+                             </div>
+                             <div className="order-summary-badges">
+                               <span className="summary-badge">
+                                 {summary.totalCount} product{summary.totalCount > 1 ? 's' : ''}
+                               </span>
+                               <span className="summary-badge total-amount">
+                                 Total: ${summary.totalAmount}
+                               </span>
+                               {summary.activeCount > 0 && (
+                                 <span className="summary-badge active-count">
+                                   {summary.activeCount} active
+                                 </span>
+                               )}
+                               {summary.cancelledCount > 0 && (
+                                 <span className="summary-badge cancelled-count">
+                                   {summary.cancelledCount} cancelled
+                                 </span>
+                               )}
+                             </div>
+                           </div>
+                           
+                           {/* Bulk actions for orders with multiple products */}
+                           {order.products.length > 1 && (
+                             <div className="bulk-actions">
+                               <button 
+                                 onClick={() => handleBulkCancelOrder(order)}
+                                 className="btn btn-sm btn-warning"
+                                 disabled={loading || order.products.filter(p => 
+                                   p.simStatus !== 'active' && 
+                                   p.status !== 'cancelled' && 
+                                   p.status !== 'failed' && 
+                                   p.status !== 'denied'
+                                 ).length === 0}
+                               >
+                                 Cancel All Available Products
+                               </button>
+                             </div>
+                           )}
 
-                            {order.products.map((product) => (
-                              <div key={product.id} className="product-item">
-                                <div className="product-info">
-                                  <h4>{product.title}</h4>
-                                  <p className="price">${product.price.amount}</p>
-                                  <div className="status-row">
-                                    <span className={`status-badge ${getStatusClass(product.status)}`}>
-                                      Payment: {product.status}
-                                    </span>
-                                    {product.simStatus && product.provider === 'airalo' && (
-                                      <span className={`status-badge ${getStatusClass(product.simStatus)}`}>
-                                        eSIM: {product.simStatus.replace('_', ' ')}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {product.status === 'pending' && (
-                                    <div className="pending-info">
-                                      <small>Processing payment... (up to 15 seconds)</small>
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="product-actions">
-                                  {/* Activate button - show only for successful products with ready eSIM */}
-                                  {product.simStatus === 'ready_for_activation' && product.status === 'success' && product.provider === 'airalo' && (
-                                    <button 
-                                      onClick={() => handleActivateEsim(order._id, product.id)}
-                                      className="btn btn-sm btn-success"
-                                      disabled={loading}
-                                    >
-                                      Activate eSIM
-                                    </button>
-                                  )}
-                                  
-                                  {/* Cancel button - show for non-activated and non-cancelled products */}
-                                  {product.simStatus !== 'active' && product.status !== 'cancelled' && product.status !== 'failed' && product.status !== 'denied' && (
-                                    <button 
-                                      onClick={() => handleCancelOrder(order, product.id)}
-                                      className="btn btn-sm btn-danger"
-                                      disabled={loading}
-                                    >
-                                      Cancel & Refund
-                                    </button>
-                                  )}
-                                  
-                                  {/* Status messages */}
-                                  {product.simStatus === 'active' && (
-                                    <div className="status-message success">
-                                      <small>eSIM is active and ready to use!</small>
-                                    </div>
-                                  )}
-                                  
-                                  {product.status === 'failed' && (
-                                    <div className="status-message error">
-                                      <small>Payment failed. Contact support.</small>
-                                    </div>
-                                  )}
-                                  
-                                  {product.status === 'denied' && (
-                                    <div className="status-message warning">
-                                      <small>Order denied due to compliance.</small>
-                                    </div>
-                                  )}
-                                  
-                                  {product.status === 'cancelled' && (
-                                    <div className="status-message neutral">
-                                      <small>Order cancelled. Refund processing...</small>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+                           {order.products.map((product) => (
+                             <div key={product.id} className="product-item">
+                               <div className="product-info">
+                                 <h4>{product.title}</h4>
+                                 <p className="price">${product.price.amount}</p>
+                                 <div className="status-row">
+                                   <span className={`status-badge ${getStatusClass(product.status)}`}>
+                                     Payment: {product.status}
+                                   </span>
+                                   {product.simStatus && product.provider === 'airalo' && (
+                                     <span className={`status-badge ${getStatusClass(product.simStatus)}`}>
+                                       eSIM: {product.simStatus.replace('_', ' ')}
+                                     </span>
+                                   )}
+                                 </div>
+                                 {product.status === 'pending' && (
+                                   <div className="pending-info">
+                                     <small>Processing payment... (up to 15 seconds)</small>
+                                   </div>
+                                 )}
+                               </div>
+                               <div className="product-actions">
+                                 {/* Activate button - show only for successful products with ready eSIM */}
+                                 {product.simStatus === 'ready_for_activation' && product.status === 'success' && product.provider === 'airalo' && (
+                                   <button 
+                                     onClick={() => handleActivateEsim(order._id, product.id)}
+                                     className="btn btn-sm btn-success"
+                                     disabled={loading}
+                                   >
+                                     Activate eSIM
+                                   </button>
+                                 )}
+                                 
+                                 {/* Cancel button - show for non-activated and non-cancelled products */}
+                                 {product.simStatus !== 'active' && product.status !== 'cancelled' && product.status !== 'failed' && product.status !== 'denied' && (
+                                   <button 
+                                     onClick={() => handleCancelOrder(order, product.id)}
+                                     className="btn btn-sm btn-danger"
+                                     disabled={loading}
+                                   >
+                                     Cancel & Refund
+                                   </button>
+                                 )}
+                                 
+                                 {/* Status messages */}
+                                 {product.simStatus === 'active' && (
+                                   <div className="status-message success">
+                                     <small>eSIM is active and ready to use!</small>
+                                   </div>
+                                 )}
+                                 
+                                 {product.status === 'failed' && (
+                                   <div className="status-message error">
+                                     <small>Payment failed. Contact support.</small>
+                                   </div>
+                                 )}
+                                 
+                                 {product.status === 'denied' && (
+                                   <div className="status-message warning">
+                                     <small>Order denied due to compliance.</small>
+                                   </div>
+                                 )}
+                                 
+                                 {product.status === 'cancelled' && (
+                                   <div className="status-message neutral">
+                                     <small>Order cancelled. Refund processing...</small>
+                                   </div>
+                                 )}
+                               </div>
+                             </div>
+                           ))}
+                         </div>
+                       );
+                     })}
+                   </div>
+                 )}
+               </div>
+             )}
 
-              {currentView === 'create-order' && user.role === 'customer' && (
-                <div className="section">
-                  <h2>Buy Travel Services</h2>
-                  
-                  {/* Product Category Filter */}
-                  <div className="product-filters">
-                    <div className="filter-tabs">
-                      <button 
-                        className={`filter-tab ${productFilter === 'all' ? 'active' : ''}`}
-                        onClick={() => setProductFilter('all')}
-                      >
-                        All Services ({availableProducts.length})
-                      </button>
-                      <button 
-                        className={`filter-tab ${productFilter === 'connectivity' ? 'active' : ''}`}
-                        onClick={() => setProductFilter('connectivity')}
-                      >
-                        eSIM & Data ({availableProducts.filter(p => p.category === 'connectivity').length})
-                      </button>
-                      <button 
-                        className={`filter-tab ${productFilter === 'transport' ? 'active' : ''}`}
-                        onClick={() => setProductFilter('transport')}
-                      >
-                        Airport Transfers ({availableProducts.filter(p => p.category === 'transport').length})
-                      </button>
-                      <button 
-                        className={`filter-tab ${productFilter === 'comfort' ? 'active' : ''}`}
-                        onClick={() => setProductFilter('comfort')}
-                      >
-                        Lounge Access ({availableProducts.filter(p => p.category === 'comfort').length})
-                      </button>
-                    </div>
-                  </div>
-                  
-                  {/* Selection Summary */}
-                  {selectedProducts.length > 0 && (
-                    <div className="selection-summary">
-                      <div className="selection-header">
-                        <h3>{selectedProducts.length} service{selectedProducts.length > 1 ? 's' : ''} selected</h3>
-                        <button onClick={clearSelectedProducts} className="btn btn-sm btn-secondary">
-                          Clear All
-                        </button>
-                      </div>
-                      <div className="selected-products">
-                        {selectedProducts.map(product => (
-                          <div key={product.id} className="selected-product-tag">
-                            <span>{product.title} - ${product.price.amount}</span>
-                            <button 
-                              onClick={() => handleProductToggle(product)}
-                              className="remove-product"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+             {currentView === 'create-order' && user.role === 'customer' && (
+               <div className="section">
+                 <h2>Buy Travel Services</h2>
+                 
+                 {/* Product Category Filter */}
+                 <div className="product-filters">
+                   <div className="filter-tabs">
+                     <button 
+                       className={`filter-tab ${productFilter === 'all' ? 'active' : ''}`}
+                       onClick={() => setProductFilter('all')}
+                     >
+                       All Services ({availableProducts.length})
+                     </button>
+                     <button 
+                       className={`filter-tab ${productFilter === 'connectivity' ? 'active' : ''}`}
+                       onClick={() => setProductFilter('connectivity')}
+                     >
+                       eSIM & Data ({availableProducts.filter(p => p.category === 'connectivity').length})
+                     </button>
+                     <button 
+                       className={`filter-tab ${productFilter === 'transport' ? 'active' : ''}`}
+                       onClick={() => setProductFilter('transport')}
+                     >
+                       Airport Transfers ({availableProducts.filter(p => p.category === 'transport').length})
+                     </button>
+                     <button 
+                       className={`filter-tab ${productFilter === 'comfort' ? 'active' : ''}`}
+                       onClick={() => setProductFilter('comfort')}
+                     >
+                       Lounge Access ({availableProducts.filter(p => p.category === 'comfort').length})
+                     </button>
+                   </div>
+                 </div>
+                 
+                 {/* Selection Summary */}
+                 {selectedProducts.length > 0 && (
+                   <div className="selection-summary">
+                     <div className="selection-header">
+                       <h3>{selectedProducts.length} service{selectedProducts.length > 1 ? 's' : ''} selected</h3>
+                       <button onClick={clearSelectedProducts} className="btn btn-sm btn-secondary">
+                         Clear All
+                       </button>
+                     </div>
+                     <div className="selected-products">
+                       {selectedProducts.map(product => (
+                         <div key={product.id} className="selected-product-tag">
+                           <span>{product.title} - ${product.price.amount}</span>
+                           <button 
+                             onClick={() => handleProductToggle(product)}
+                             className="remove-product"
+                           >
+                             ×
+                           </button>
+                         </div>
+                       ))}
+                     </div>
+                   </div>
+                 )}
 
-                  <div className="products-grid">
-                    {filteredProducts.map((product) => (
-                      <div 
-                        key={product.id} 
-                        className={`product-selection-card ${selectedProducts.some(p => p.id === product.id) ? 'selected' : ''}`}
-                        onClick={() => handleProductToggle(product)}
-                      >
-                        <div className="product-provider-badge">
-                          {product.provider}
-                        </div>
-                        <h3>{product.title}</h3>
-                        <p className="product-description">{product.description}</p>
-                        <div className="product-features">
-                          {product.features.map((feature, index) => (
-                            <span key={index} className="feature-tag">{feature}</span>
-                          ))}
-                        </div>
-                        <div className="product-price-large">
-                          ${product.price.amount} {product.price.currency}
-                        </div>
-                        {selectedProducts.some(p => p.id === product.id) && (
-                          <div className="selected-indicator">
-                            ✓ Selected
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  
-                  {selectedProducts.length > 0 && (
-                    <div className="order-summary">
-                      <h3>Order Summary</h3>
-                      <div className="summary-items">
-                        {selectedProducts.map(product => (
-                          <div key={product.id} className="summary-item">
-                            <span>{product.title}</span>
-                            <span>${product.price.amount} {product.price.currency}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="summary-divider"></div>
-                      <div className="summary-item summary-total">
-                        <span>Total ({selectedProducts.length} service{selectedProducts.length > 1 ? 's' : ''}):</span>
-                        <span>${selectedProducts.reduce((sum, p) => sum + p.price.amount, 0)} USD</span>
-                      </div>
-                      <div className="summary-item">
-                        <span>Customer:</span>
-                        <span>{user.email}</span>
-                      </div>
-                      
-                      <button 
-                        onClick={handleCreateOrder}
-                        disabled={loading}
-                        className="btn btn-primary btn-full order-btn"
-                      >
-                        {loading ? 'Processing Order...' : 
-                         `Buy ${selectedProducts.length > 1 ? 'All' : 'Now'} - ${selectedProducts.reduce((sum, p) => sum + p.price.amount, 0)}`}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+                 <div className="products-grid">
+                   {filteredProducts.map((product) => (
+                     <div 
+                       key={product.id} 
+                       className={`product-selection-card ${selectedProducts.some(p => p.id === product.id) ? 'selected' : ''}`}
+                       onClick={() => handleProductToggle(product)}
+                     >
+                       <div className="product-provider-badge">
+                         {product.provider}
+                       </div>
+                       <h3>{product.title}</h3>
+                       <p className="product-description">{product.description}</p>
+                       <div className="product-features">
+                         {product.features.map((feature, index) => (
+                           <span key={index} className="feature-tag">{feature}</span>
+                         ))}
+                       </div>
+                       <div className="product-price-large">
+                         ${product.price.amount} {product.price.currency}
+                       </div>
+                       {selectedProducts.some(p => p.id === product.id) && (
+                         <div className="selected-indicator">
+                           ✓ Selected
+                         </div>
+                       )}
+                     </div>
+                   ))}
+                 </div>
+                 
+                 {selectedProducts.length > 0 && (
+                   <div className="order-summary">
+                     <h3>Order Summary</h3>
+                     <div className="summary-items">
+                       {selectedProducts.map(product => (
+                         <div key={product.id} className="summary-item">
+                           <span>{product.title}</span>
+                           <span>${product.price.amount} {product.price.currency}</span>
+                         </div>
+                       ))}
+                     </div>
+                     <div className="summary-divider"></div>
+                     <div className="summary-item summary-total">
+                       <span>Total ({selectedProducts.length} service{selectedProducts.length > 1 ? 's' : ''}):</span>
+                       <span>${selectedProducts.reduce((sum, p) => sum + p.price.amount, 0)} USD</span>
+                     </div>
+                     <div className="summary-item">
+                       <span>Customer:</span>
+                       <span>{user.email}</span>
+                     </div>
+                     
+                     <button 
+                       onClick={handleCreateOrder}
+                       disabled={loading}
+                       className="btn btn-primary btn-full order-btn"
+                     >
+                       {loading ? 'Processing Order...' : 
+                        `Buy ${selectedProducts.length > 1 ? 'All' : 'Now'} - $${selectedProducts.reduce((sum, p) => sum + p.price.amount, 0)}`}
+                     </button>
+                   </div>
+                 )}
+               </div>
+             )}
 
-              {/* Admin Views */}
-              {currentView === 'admin-dashboard' && user.role === 'admin' && (
-                <div className="section">
-                  <h2>Admin Dashboard</h2>
-                  <div className="stats-grid">
-                    <div className="stat-card">
-                      <h3>Total Orders</h3>
-                      <div className="stat-number">{adminStats.totalOrders || 0}</div>
-                    </div>
-                    <div className="stat-card">
-                      <h3>Active Products</h3>
-                      <div className="stat-number">{adminStats.successProducts || 0}</div>
-                    </div>
-                    <div className="stat-card">
-                      <h3>Cancelled Products</h3>
-                      <div className="stat-number">{adminStats.cancelledProducts || 0}</div>
-                    </div>
-                    <div className="stat-card">
-                      <h3>Total Revenue</h3>
-                      <div className="stat-number">${adminStats.totalRevenue || 0}</div>
-                    </div>
-                    <div className="stat-card">
-                      <h3>Activated eSIMs</h3>
-                      <div className="stat-number">{adminStats.activatedEsims || 0}</div>
-                    </div>
-                    <div className="stat-card">
-                      <h3>Pending Orders</h3>
-                      <div className="stat-number">{adminStats.pendingProducts || 0}</div>
-                    </div>
-                  </div>
-                </div>
-              )}
+             {/* Admin Views */}
+             {currentView === 'admin-dashboard' && user.role === 'admin' && (
+               <div className="section">
+                 <h2>Admin Dashboard</h2>
+                 <div className="stats-grid">
+                   <div className="stat-card">
+                     <h3>Total Orders</h3>
+                     <div className="stat-number">{adminStats.totalOrders || 0}</div>
+                   </div>
+                   <div className="stat-card">
+                     <h3>Active Products</h3>
+                     <div className="stat-number">{adminStats.successProducts || 0}</div>
+                   </div>
+                   <div className="stat-card">
+                     <h3>Cancelled Products</h3>
+                     <div className="stat-number">{adminStats.cancelledProducts || 0}</div>
+                   </div>
+                   <div className="stat-card">
+                     <h3>Total Revenue</h3>
+                     <div className="stat-number">${adminStats.totalRevenue || 0}</div>
+                   </div>
+                   <div className="stat-card">
+                     <h3>Activated eSIMs</h3>
+                     <div className="stat-number">{adminStats.activatedEsims || 0}</div>
+                   </div>
+                   <div className="stat-card">
+                     <h3>Pending Orders</h3>
+                     <div className="stat-number">{adminStats.pendingProducts || 0}</div>
+                   </div>
+                 </div>
+               </div>
+             )}
 
-              {currentView === 'admin-invitations' && user.role === 'admin' && (
-                <div className="section">
-                  <h2>Partner Invitations</h2>
-                  <div className="form-card">
-                    <h3>Create Invitation Code</h3>
-                    <p>Generate invitation codes for new partners</p>
-                    
-                    <button 
-                      onClick={handleCreateInvitation}
-                      disabled={loading}
-                      className="btn btn-primary btn-full"
-                    >
-                      {loading ? 'Creating Code...' : 'Generate New Invitation Code'}
-                    </button>
-                    
-                    {invitationCode && (
-                      <div className="invitation-result">
-                        <h4>New Invitation Code:</h4>
-                        <div className="code-display">
-                          <code>{invitationCode}</code>
-                          <button 
-                            onClick={() => navigator.clipboard.writeText(invitationCode)}
-                            className="btn btn-sm btn-secondary"
-                          >
-                            Copy
-                          </button>
-                        </div>
-                        <small>Valid for 30 days</small>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              
-              {currentView === 'admin-webhooks' && user.role === 'admin' && (
-                <div className="section">
-                  <h2>Webhook Management</h2>
-                  <div className="webhooks-list">
-                    {webhooks.length === 0 ? (
-                      <div className="empty-state">
-                        <p>No webhooks configured</p>
-                      </div>
-                    ) : (
-                      webhooks.map((webhook) => (
-                        <div key={webhook.id} className="webhook-card">
-                          <div className="webhook-info">
-                            <h4>{webhook.url}</h4>
-                            <p>Events: {webhook.events.join(', ')}</p>
-                            <span className={`status-badge ${webhook.isActive ? 'status-active' : 'status-inactive'}`}>
-                              {webhook.isActive ? 'Active' : 'Inactive'}
-                            </span>
-                          </div>
-                          <div className="webhook-date">
-                            {new Date(webhook.createdAt).toLocaleDateString()}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
+             {currentView === 'admin-invitations' && user.role === 'admin' && (
+               <div className="section">
+                 <h2>Partner Invitations</h2>
+                 <div className="form-card">
+                   <h3>Create Invitation Code</h3>
+                   <p>Generate invitation codes for new partners</p>
+                   
+                   <button 
+                     onClick={handleCreateInvitation}
+                     disabled={loading}
+                     className="btn btn-primary btn-full"
+                   >
+                     {loading ? 'Creating Code...' : 'Generate New Invitation Code'}
+                   </button>
+                   
+                   {invitationCode && (
+                     <div className="invitation-result">
+                       <h4>New Invitation Code:</h4>
+                       <div className="code-display">
+                         <code>{invitationCode}</code>
+                         <button 
+                           onClick={() => navigator.clipboard.writeText(invitationCode)}
+                           className="btn btn-sm btn-secondary"
+                         >
+                           Copy
+                         </button>
+                       </div>
+                       <small>Valid for 30 days</small>
+                     </div>
+                   )}
+                 </div>
+               </div>
+             )}
+             
+             {currentView === 'admin-webhooks' && user.role === 'admin' && (
+               <div className="section">
+                 <h2>Webhook Management</h2>
+                 <div className="webhooks-list">
+                   {webhooks.length === 0 ? (
+                     <div className="empty-state">
+                       <p>No webhooks configured</p>
+                     </div>
+                   ) : (
+                     webhooks.map((webhook) => (
+                       <div key={webhook.id} className="webhook-card">
+                         <div className="webhook-info">
+                           <h4>{webhook.url}</h4>
+                           <p>Events: {webhook.events.join(', ')}</p>
+                           <span className={`status-badge ${webhook.isActive ? 'status-active' : 'status-inactive'}`}>
+                             {webhook.isActive ? 'Active' : 'Inactive'}
+                           </span>
+                         </div>
+                         <div className="webhook-date">
+                           {new Date(webhook.createdAt).toLocaleDateString()}
+                         </div>
+                       </div>
+                     ))
+                   )}
+                 </div>
+               </div>
+             )}
 
-              {/* Partner Views */}
-              {currentView === 'partner-dashboard' && user.role === 'partner' && (
-                <div className="section">
-                  <h2>Partner Dashboard</h2>
-                  <div className="stats-grid">
-                    {partnerStats.map((stat, index) => (
-                      <div key={index} className="stat-card">
-                        <h3>Status: {stat._id}</h3>
-                        <div className="stat-number">{stat.count}</div>
-                        <div className="stat-detail">Total: ${stat.totalAmount}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+             {/* Partner Views */}
+             {currentView === 'partner-dashboard' && user.role === 'partner' && (
+               <div className="section">
+                 <h2>Partner Dashboard</h2>
+                 <div className="stats-grid">
+                   {partnerStats.statusStats && partnerStats.statusStats.map((stat, index) => (
+                     <div key={index} className="stat-card">
+                       <h3>Status: {stat._id}</h3>
+                       <div className="stat-number">{stat.count}</div>
+                       <div className="stat-detail">Total: ${stat.totalAmount}</div>
+                     </div>
+                   ))}
+                 </div>
+               </div>
+             )}
 
-              {currentView === 'partner-orders' && user.role === 'partner' && (
-                <div className="section">
-                  <h2>Order Management</h2>
-                  
-                  <div className="form-card">
-                    <h3>Manual Status Update</h3>
-                    <p>Update order status manually (within 15 seconds of creation)</p>
-                    
-                    <div className="form-row">
-                      <div className="form-group">
-                        <label>Order ID</label>
-                        <input
-                          type="text"
-                          placeholder="Order ID (MongoDB ObjectId)"
-                          value={partnerStatusData.orderId}
-                          onChange={(e) => setPartnerStatusData({...partnerStatusData, orderId: e.target.value})}
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Product ID</label>
-                        <input
-                          type="text"
-                          placeholder="Product ID (e.g., PROD-001)"
-                          value={partnerStatusData.productId}
-                          onChange={(e) => setPartnerStatusData({...partnerStatusData, productId: e.target.value})}
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="form-group">
-                      <label>New Status</label>
-                      <select 
-                        value={partnerStatusData.newStatus}
-                        onChange={(e) => setPartnerStatusData({...partnerStatusData, newStatus: e.target.value})}
-                      >
-                        <option value="success">Success</option>
-                        <option value="failed">Failed</option>
-                        <option value="denied">Denied</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
-                    </div>
-                    
-                    <button 
-                      onClick={handleUpdateProductStatus}
-                      disabled={loading || !partnerStatusData.orderId}
-                      className="btn btn-warning btn-full"
-                    >
-                      {loading ? 'Updating...' : 'Update Status'}
-                    </button>
-                  </div>
-                </div>
-              )}
+             {currentView === 'partner-orders' && user.role === 'partner' && (
+               <div className="section">
+                 <h2>Order Management</h2>
+                 
+                 <div className="form-card">
+                   <h3>Manual Status Update</h3>
+                   <p>Update order status manually (within 15 seconds of creation)</p>
+                   
+                   <div className="form-row">
+                     <div className="form-group">
+                       <label>Order ID</label>
+                       <input
+                         type="text"
+                         placeholder="Order ID (MongoDB ObjectId)"
+                         value={partnerStatusData.orderId}
+                         onChange={(e) => setPartnerStatusData({...partnerStatusData, orderId: e.target.value})}
+                       />
+                     </div>
+                     <div className="form-group">
+                       <label>Product ID</label>
+                       <input
+                         type="text"
+                         placeholder="Product ID (e.g., PROD-001)"
+                         value={partnerStatusData.productId}
+                         onChange={(e) => setPartnerStatusData({...partnerStatusData, productId: e.target.value})}
+                       />
+                     </div>
+                   </div>
+                   
+                   <div className="form-group">
+                     <label>New Status</label>
+                     <select 
+                       value={partnerStatusData.newStatus}
+                       onChange={(e) => setPartnerStatusData({...partnerStatusData, newStatus: e.target.value})}
+                     >
+                       <option value="success">Success</option>
+                       <option value="failed">Failed</option>
+                       <option value="denied">Denied</option>
+                       <option value="cancelled">Cancelled</option>
+                     </select>
+                   </div>
+                   
+                   <button 
+                     onClick={handleUpdateProductStatus}
+                     disabled={loading || !partnerStatusData.orderId}
+                     className="btn btn-warning btn-full"
+                   >
+                     {loading ? 'Updating...' : 'Update Status'}
+                   </button>
+                 </div>
+               </div>
+             )}
 
-              {/* Response/Error Messages */}
-              {(response || error) && (
-                <div className="message-section">
-                  {response && (
-                    <div className="message success">
-                      <div className="message-content">
-                        <strong>Success:</strong> {response}
-                      </div>
-                      <button 
-                        onClick={() => setResponse('')} 
-                        className="message-close"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  )}
-                  
-                  {error && (
-                    <div className="message error">
-                      <div className="message-content">
-                        <strong>Error:</strong> {error}
-                      </div>
-                      <button 
-                        onClick={() => setError('')} 
-                        className="message-close"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+             {/* Profile View */}
+             {currentView === 'profile' && (
+               <div className="section">
+                 <h2>Profile Settings</h2>
+                 
+                 <div className="form-card">
+                   <h3>Personal Information</h3>
+                   <p>Update your account details</p>
+                   
+                   <div className="form-row">
+                     <div className="form-group">
+                       <label>First Name</label>
+                       <input
+                         type="text"
+                         placeholder="Enter first name"
+                         value={profileForm.firstName}
+                         onChange={(e) => setProfileForm({...profileForm, firstName: e.target.value})}
+                       />
+                     </div>
+                     <div className="form-group">
+                       <label>Last Name</label>
+                       <input
+                         type="text"
+                         placeholder="Enter last name"
+                         value={profileForm.lastName}
+                         onChange={(e) => setProfileForm({...profileForm, lastName: e.target.value})}
+                       />
+                     </div>
+                   </div>
+                   
+                   <div className="form-group">
+                     <label>Email Address</label>
+                     <input
+                       type="email"
+                       placeholder="Enter email address"
+                       value={profileForm.newEmail}
+                       onChange={(e) => setProfileForm({...profileForm, newEmail: e.target.value})}
+                     />
+                     <small>Used for login and notifications</small>
+                   </div>
+                 </div>
+
+                 <div className="form-card">
+                   <h3>Change Password (PNR)</h3>
+                   <p>Update your login password</p>
+                   
+                   <div className="form-group">
+                     <label>Current Password</label>
+                     <input
+                       type="password"
+                       placeholder="Enter current password"
+                       value={profileForm.currentPassword}
+                       onChange={(e) => setProfileForm({...profileForm, currentPassword: e.target.value})}
+                     />
+                     <small>Required to change password</small>
+                   </div>
+                   
+                   <div className="form-row">
+                     <div className="form-group">
+                       <label>New Password</label>
+                       <input
+                         type="password"
+                         placeholder="Enter new password"
+                         value={profileForm.newPassword}
+                         onChange={(e) => setProfileForm({...profileForm, newPassword: e.target.value})}
+                       />
+                     </div>
+                     <div className="form-group">
+                       <label>Confirm New Password</label>
+                       <input
+                         type="password"
+                         placeholder="Confirm new password"
+                         value={profileForm.confirmPassword}
+                         onChange={(e) => setProfileForm({...profileForm, confirmPassword: e.target.value})}
+                       />
+                     </div>
+                   </div>
+                 </div>
+
+                 <div className="profile-actions">
+                   <button 
+                     onClick={handleUpdateProfile}
+                     disabled={loading}
+                     className="btn btn-primary"
+                   >
+                     {loading ? 'Updating Profile...' : 'Save Changes'}
+                   </button>
+                   
+                   <button 
+                     onClick={loadUserProfile}
+                     disabled={loading}
+                     className="btn btn-secondary"
+                   >
+                     Reset Form
+                   </button>
+                 </div>
+
+                 <div className="profile-info">
+                   <h4>Account Information</h4>
+                   <div className="info-grid">
+                     <div className="info-item">
+                       <span className="info-label">Account Type:</span>
+                       <span className={`role-badge role-${user.role}`}>{user.role}</span>
+                     </div>
+                     <div className="info-item">
+                       <span className="info-label">Member Since:</span>
+                       <span>{profileData.createdAt ? new Date(profileData.createdAt).toLocaleDateString() : 'N/A'}</span>
+                     </div>
+                     {user.role === 'partner' && (
+                       <div className="info-item">
+                         <span className="info-label">API Access:</span>
+                         <span className="status-badge status-active">Enabled</span>
+                       </div>
+                     )}
+                   </div>
+                 </div>
+               </div>
+             )}
+
+             {/* Response/Error Messages */}
+             {(response || error) && (
+               <div className="message-section">
+                 {response && (
+                   <div className="message success">
+                     <div className="message-content">
+                       <strong>Success:</strong> {response}
+                     </div>
+                     <button 
+                       onClick={() => setResponse('')} 
+                       className="message-close"
+                     >
+                       ×
+                     </button>
+                   </div>
+                 )}
+                 
+                 {error && (
+                   <div className="message error">
+                     <div className="message-content">
+                       <strong>Error:</strong> {error}
+                     </div>
+                     <button 
+                       onClick={() => setError('')} 
+                       className="message-close"
+                     >
+                       ×
+                     </button>
+                   </div>
+                 )}
+               </div>
+             )}
+           </div>
+         </div>
+       )}
+     </div>
+   </div>
+ );
 }

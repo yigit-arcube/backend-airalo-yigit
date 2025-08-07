@@ -413,56 +413,291 @@ validateCancellationEligibility(product: any): { canCancel: boolean; reason?: st
 
   // get order statistics for admin dashboard
   async getOrderStats(): Promise<any> {
-    try {
-      const { orders } = await this.orderRepo.getAllOrdersPaginated(1, 1000); // get all for stats
-      
-      const stats = {
-        totalOrders: orders.length,
-        confirmedOrders: orders.filter(o => o.status === 'confirmed').length,
-        totalProducts: orders.reduce((sum, order) => sum + order.products.length, 0),
-        pendingProducts: orders.reduce((sum, order) => 
+  try {
+    const { orders } = await this.orderRepo.getAllOrdersPaginated(1, 1000);
+    
+    const stats = {
+      totalOrders: orders.length,
+      confirmedOrders: orders.filter(o => o.status === 'confirmed').length,
+      totalProducts: orders.reduce((sum, order) => sum + order.products.length, 0),
+      pendingProducts: orders.reduce((sum, order) => 
+        sum + order.products.filter(p => p.status === 'pending').length, 0),
+      successProducts: orders.reduce((sum, order) => 
+        sum + order.products.filter(p => p.status === 'success').length, 0),
+      failedProducts: orders.reduce((sum, order) => 
+        sum + order.products.filter(p => p.status === 'failed').length, 0),
+      deniedProducts: orders.reduce((sum, order) => 
+        sum + order.products.filter(p => p.status === 'denied').length, 0),
+      cancelledProducts: orders.reduce((sum, order) => 
+        sum + order.products.filter(p => p.status === 'cancelled').length, 0),
+      activatedEsims: orders.reduce((sum, order) => 
+        sum + order.products.filter(p => p.simStatus === 'active').length, 0),
+      confirmedTransfers: orders.reduce((sum, order) => 
+        sum + order.products.filter(p => p.transferStatus === 'confirmed').length, 0),
+      completedTransfers: orders.reduce((sum, order) => 
+        sum + order.products.filter(p => p.transferStatus === 'completed').length, 0),
+      inProgressTransfers: orders.reduce((sum, order) => 
+        sum + order.products.filter(p => p.transferStatus === 'in_progress').length, 0),
+      confirmedAccess: orders.reduce((sum, order) => 
+        sum + order.products.filter(p => p.accessStatus === 'confirmed').length, 0),
+      usedAccess: orders.reduce((sum, order) => 
+        sum + order.products.filter(p => p.accessStatus === 'used').length, 0),
+      expiredAccess: orders.reduce((sum, order) => 
+        sum + order.products.filter(p => p.accessStatus === 'expired').length, 0),
+      totalRevenue: orders.reduce((sum, order) => 
+        sum + order.products.reduce((productSum, product) => 
+          productSum + (product.status === 'success' ? product.price.amount : 0), 0), 0),
+      providerStats: {
+        airalo: {
+          totalProducts: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'airalo').length, 0),
+          successfulProducts: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'airalo' && p.status === 'success').length, 0),
+          activatedEsims: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'airalo' && p.simStatus === 'active').length, 0),
+          revenue: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'airalo' && p.status === 'success')
+              .reduce((providerSum, product) => providerSum + product.price.amount, 0), 0)
+        },
+        mozio: {
+          totalProducts: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'mozio').length, 0),
+          successfulProducts: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'mozio' && p.status === 'success').length, 0),
+          confirmedTransfers: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'mozio' && p.transferStatus === 'confirmed').length, 0),
+          completedTransfers: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'mozio' && p.transferStatus === 'completed').length, 0),
+          revenue: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'mozio' && p.status === 'success')
+              .reduce((providerSum, product) => providerSum + product.price.amount, 0), 0)
+        },
+        dragonpass: {
+          totalProducts: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'dragonpass').length, 0),
+          successfulProducts: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'dragonpass' && p.status === 'success').length, 0),
+          confirmedAccess: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'dragonpass' && p.accessStatus === 'confirmed').length, 0),
+          usedAccess: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'dragonpass' && p.accessStatus === 'used').length, 0),
+          revenue: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'dragonpass' && p.status === 'success')
+              .reduce((providerSum, product) => providerSum + product.price.amount, 0), 0)
+        }
+      },
+      recentActivity: {
+        last24Hours: {
+          newOrders: orders.filter(o => {
+            const orderDate = new Date(o.createdAt);
+            const now = new Date();
+            const timeDiff = (now.getTime() - orderDate.getTime()) / (1000 * 60 * 60);
+            return timeDiff <= 24;
+          }).length,
+          activations: orders.reduce((sum, order) => {
+            const recentActivations = order.products.filter(p => {
+              if (!p.activatedAt) return false;
+              const activationDate = new Date(p.activatedAt);
+              const now = new Date();
+              const timeDiff = (now.getTime() - activationDate.getTime()) / (1000 * 60 * 60);
+              return timeDiff <= 24;
+            });
+            return sum + recentActivations.length;
+          }, 0),
+          cancellations: orders.reduce((sum, order) => {
+            const recentCancellations = order.products.filter(p => {
+              if (p.status !== 'cancelled') return false;
+              const orderDate = new Date(order.createdAt);
+              const now = new Date();
+              const timeDiff = (now.getTime() - orderDate.getTime()) / (1000 * 60 * 60);
+              return timeDiff <= 24;
+            });
+            return sum + recentCancellations.length;
+          }, 0)
+        }
+      }
+    };
+
+    return stats;
+  } catch (error) {
+    console.error('failed to get order statistics:', error);
+    return {
+      totalOrders: 0,
+      confirmedOrders: 0,
+      totalProducts: 0,
+      pendingProducts: 0,
+      successProducts: 0,
+      failedProducts: 0,
+      deniedProducts: 0,
+      cancelledProducts: 0,
+      activatedEsims: 0,
+      confirmedTransfers: 0,
+      completedTransfers: 0,
+      inProgressTransfers: 0,
+      confirmedAccess: 0,
+      usedAccess: 0,
+      expiredAccess: 0,
+      totalRevenue: 0,
+      providerStats: {
+        airalo: { totalProducts: 0, successfulProducts: 0, activatedEsims: 0, revenue: 0 },
+        mozio: { totalProducts: 0, successfulProducts: 0, confirmedTransfers: 0, completedTransfers: 0, revenue: 0 },
+        dragonpass: { totalProducts: 0, successfulProducts: 0, confirmedAccess: 0, usedAccess: 0, revenue: 0 }
+      },
+      recentActivity: {
+        last24Hours: { newOrders: 0, activations: 0, cancellations: 0 }
+      }
+    };
+  }
+}
+
+async getPartnerStats(): Promise<any> {
+  try {
+    const { orders } = await this.orderRepo.getAllOrdersPaginated(1, 1000);
+    
+    const partnerStats = [
+      {
+        _id: 'pending',
+        count: orders.reduce((sum, order) => 
           sum + order.products.filter(p => p.status === 'pending').length, 0),
-        successProducts: orders.reduce((sum, order) => 
+        totalAmount: orders.reduce((sum, order) => 
+          sum + order.products.filter(p => p.status === 'pending')
+            .reduce((statusSum, product) => statusSum + product.price.amount, 0), 0)
+      },
+      {
+        _id: 'success',
+        count: orders.reduce((sum, order) => 
           sum + order.products.filter(p => p.status === 'success').length, 0),
-        failedProducts: orders.reduce((sum, order) => 
+        totalAmount: orders.reduce((sum, order) => 
+          sum + order.products.filter(p => p.status === 'success')
+            .reduce((statusSum, product) => statusSum + product.price.amount, 0), 0)
+      },
+      {
+        _id: 'failed',
+        count: orders.reduce((sum, order) => 
           sum + order.products.filter(p => p.status === 'failed').length, 0),
-        deniedProducts: orders.reduce((sum, order) => 
+        totalAmount: orders.reduce((sum, order) => 
+          sum + order.products.filter(p => p.status === 'failed')
+            .reduce((statusSum, product) => statusSum + product.price.amount, 0), 0)
+      },
+      {
+        _id: 'denied',
+        count: orders.reduce((sum, order) => 
           sum + order.products.filter(p => p.status === 'denied').length, 0),
-        cancelledProducts: orders.reduce((sum, order) => 
+        totalAmount: orders.reduce((sum, order) => 
+          sum + order.products.filter(p => p.status === 'denied')
+            .reduce((statusSum, product) => statusSum + product.price.amount, 0), 0)
+      },
+      {
+        _id: 'cancelled',
+        count: orders.reduce((sum, order) => 
           sum + order.products.filter(p => p.status === 'cancelled').length, 0),
-        activatedEsims: orders.reduce((sum, order) => 
-        //   sum + order.products.filter(p => p.simStatus === 'active').length, 0),
-        // totalRevenue: orders.reduce((sum, order) => 
-          sum + order.products.reduce((productSum, product) => 
-            productSum + (product.status === 'success' ? product.price.amount : 0), 0), 0)
-      };
+        totalAmount: orders.reduce((sum, order) => 
+          sum + order.products.filter(p => p.status === 'cancelled')
+            .reduce((statusSum, product) => statusSum + product.price.amount, 0), 0)
+      }
+    ];
 
-      return stats;
-    } catch (error) {
-      console.error('failed to get order statistics:', error);
-      return {
-        totalOrders: 0,
-        confirmedOrders: 0,
-        totalProducts: 0,
-        pendingProducts: 0,
-        successProducts: 0,
-        failedProducts: 0,
-        deniedProducts: 0,
-        cancelledProducts: 0,
-        activatedEsims: 0,
-        totalRevenue: 0
-      };
-    }
-  }
+    const providerBreakdown = {
+      airalo: {
+        totalProducts: orders.reduce((sum, order) => 
+          sum + order.products.filter(p => p.provider === 'airalo').length, 0),
+        statusBreakdown: {
+          pending: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'airalo' && p.status === 'pending').length, 0),
+          success: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'airalo' && p.status === 'success').length, 0),
+          failed: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'airalo' && p.status === 'failed').length, 0),
+          denied: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'airalo' && p.status === 'denied').length, 0),
+          cancelled: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'airalo' && p.status === 'cancelled').length, 0)
+        },
+        simStatusBreakdown: {
+          ready: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'airalo' && p.simStatus === 'ready_for_activation').length, 0),
+          active: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'airalo' && p.simStatus === 'active').length, 0),
+          cancelled: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'airalo' && p.simStatus === 'cancelled').length, 0)
+        }
+      },
+      mozio: {
+        totalProducts: orders.reduce((sum, order) => 
+          sum + order.products.filter(p => p.provider === 'mozio').length, 0),
+        statusBreakdown: {
+          pending: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'mozio' && p.status === 'pending').length, 0),
+          success: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'mozio' && p.status === 'success').length, 0),
+          failed: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'mozio' && p.status === 'failed').length, 0),
+          denied: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'mozio' && p.status === 'denied').length, 0),
+          cancelled: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'mozio' && p.status === 'cancelled').length, 0)
+        },
+        transferStatusBreakdown: {
+          confirmed: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'mozio' && p.transferStatus === 'confirmed').length, 0),
+          inProgress: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'mozio' && p.transferStatus === 'in_progress').length, 0),
+          completed: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'mozio' && p.transferStatus === 'completed').length, 0),
+          cancelled: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'mozio' && p.transferStatus === 'cancelled').length, 0)
+        }
+      },
+      dragonpass: {
+        totalProducts: orders.reduce((sum, order) => 
+          sum + order.products.filter(p => p.provider === 'dragonpass').length, 0),
+        statusBreakdown: {
+          pending: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'dragonpass' && p.status === 'pending').length, 0),
+          success: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'dragonpass' && p.status === 'success').length, 0),
+          failed: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'dragonpass' && p.status === 'failed').length, 0),
+          denied: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'dragonpass' && p.status === 'denied').length, 0),
+          cancelled: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'dragonpass' && p.status === 'cancelled').length, 0)
+        },
+        accessStatusBreakdown: {
+          confirmed: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'dragonpass' && p.accessStatus === 'confirmed').length, 0),
+          used: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'dragonpass' && p.accessStatus === 'used').length, 0),
+          expired: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'dragonpass' && p.accessStatus === 'expired').length, 0),
+          cancelled: orders.reduce((sum, order) => 
+            sum + order.products.filter(p => p.provider === 'dragonpass' && p.accessStatus === 'cancelled').length, 0)
+        }
+      }
+    };
 
-  // get partner dashboard statistics
-  async getPartnerStats(): Promise<any> {
-    try {
-      const stats = await this.orderRepo.getPartnerStats();
-      return stats;
-    } catch (error) {
-      console.error('failed to get partner statistics:', error);
-      return [];
-    }
+    return {
+      statusStats: partnerStats,
+      providerBreakdown: providerBreakdown,
+      totalOrders: orders.length,
+      totalProducts: orders.reduce((sum, order) => sum + order.products.length, 0),
+      totalRevenue: orders.reduce((sum, order) => 
+        sum + order.products.reduce((productSum, product) => 
+          productSum + (product.status === 'success' ? product.price.amount : 0), 0), 0)
+    };
+  } catch (error) {
+    console.error('failed to get partner statistics:', error);
+    return {
+      statusStats: [],
+      providerBreakdown: {
+        airalo: { totalProducts: 0, statusBreakdown: {}, simStatusBreakdown: {} },
+        mozio: { totalProducts: 0, statusBreakdown: {}, transferStatusBreakdown: {} },
+        dragonpass: { totalProducts: 0, statusBreakdown: {}, accessStatusBreakdown: {} }
+      },
+      totalOrders: 0,
+      totalProducts: 0,
+      totalRevenue: 0
+    };
   }
+}
 }

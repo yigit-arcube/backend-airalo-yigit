@@ -63,11 +63,10 @@ export default function ArcubeApp() {
       price: { amount: 18, currency: 'USD' },
       description: 'Works in 100+ countries worldwide',
       features: ['3GB Data', '7 Days Validity', 'Global Coverage']
-    },
-    //new ancilleries to be added
+    }
   ]);
 
-  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [selectedProducts, setSelectedProducts] = useState([]); // Changed from selectedProduct to selectedProducts array
 
   // customer orders
   const [customerOrders, setCustomerOrders] = useState([]);
@@ -238,10 +237,27 @@ export default function ArcubeApp() {
     setLoading(false);
   };
 
-  // create order handler - simplified to use user data and selected product
+  // handle product selection (toggle)
+  const handleProductToggle = (product) => {
+    setSelectedProducts(prev => {
+      const isSelected = prev.some(p => p.id === product.id);
+      if (isSelected) {
+        return prev.filter(p => p.id !== product.id);
+      } else {
+        return [...prev, product];
+      }
+    });
+  };
+
+  // clear all selected products
+  const clearSelectedProducts = () => {
+    setSelectedProducts([]);
+  };
+
+  // create order handler - updated to handle multiple products
   const handleCreateOrder = async () => {
-    if (!selectedProduct || !user) {
-      setError('Please select a product and ensure you are logged in');
+    if (selectedProducts.length === 0 || !user) {
+      setError('Please select at least one product and ensure you are logged in');
       return;
     }
 
@@ -255,7 +271,7 @@ export default function ArcubeApp() {
           firstName: user.firstName || 'Customer',
           lastName: user.lastName || 'User'
         },
-        products: [selectedProduct]
+        products: selectedProducts
       };
 
       const res = await fetch(`${API_BASE}/orders/create`, {
@@ -270,8 +286,10 @@ export default function ArcubeApp() {
       const result = await res.json();
       
       if (result.success) {
-        setResponse(`Order created successfully! PNR: ${result.data.pnr}`);
-        setSelectedProduct(null);
+        const productCount = selectedProducts.length;
+        const totalAmount = selectedProducts.reduce((sum, p) => sum + p.price.amount, 0);
+        setResponse(`Order created successfully! PNR: ${result.data.pnr} (${productCount} product${productCount > 1 ? 's' : ''}, Total: $${totalAmount})`);
+        setSelectedProducts([]);
         loadCustomerOrders();
       } else {
         setError(result.error || 'Order creation failed');
@@ -320,6 +338,7 @@ export default function ArcubeApp() {
       const payload = {
         orderIdentifier: {
           pnr: order.pnr,
+          orderId: order._id, // Add orderId to the identifier
           ...(user.role === 'customer' && { email: order.customer.email })
         },
         productId: productId,
@@ -352,6 +371,63 @@ export default function ArcubeApp() {
         if (user.role === 'partner') loadPartnerData();
       } else {
         setError(result.user_message || result.error || 'Cancellation failed');
+      }
+    } catch (error) {
+      setError('Network error. Please try again.');
+    }
+    setLoading(false);
+  };
+
+  // bulk cancel order handler
+  const handleBulkCancelOrder = async (order) => {
+    const cancellableProducts = order.products.filter(p => 
+      p.simStatus !== 'active' && 
+      p.status !== 'cancelled' && 
+      p.status !== 'failed' && 
+      p.status !== 'denied'
+    );
+
+    if (cancellableProducts.length === 0) {
+      setError('No products available for cancellation in this order');
+      return;
+    }
+
+    setLoading(true);
+    clearMessages();
+    
+    try {
+      const payload = {
+        orderIdentifier: {
+          pnr: order.pnr,
+          orderId: order._id,
+          ...(user.role === 'customer' && { email: order.customer.email })
+        },
+        productIds: cancellableProducts.map(p => p.id),
+        requestSource: user.role === 'admin' ? 'admin_panel' : 
+                     user.role === 'partner' ? 'partner_api' : 'customer_app',
+        reason: 'Customer requested bulk cancellation'
+      };
+
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      };
+
+      const res = await fetch(`${API_BASE}/orders/bulk-cancel`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+      
+      const result = await res.json();
+      
+      if (result.success) {
+        const { successful, failed, summary } = result.data;
+        const totalRefund = summary?.totalRefund || 0;
+        setResponse(`Bulk cancellation completed! ${successful}/${successful + failed} successful. Total refund: $${totalRefund}`);
+        loadCustomerOrders();
+      } else {
+        setError(result.error || 'Bulk cancellation failed');
       }
     } catch (error) {
       setError('Network error. Please try again.');
@@ -513,7 +589,7 @@ export default function ArcubeApp() {
     setWebhooks([]);
     setPartnerStats([]);
     setInvitationCode('');
-    setSelectedProduct(null);
+    setSelectedProducts([]);
   };
 
   // navigation handler
@@ -533,6 +609,15 @@ export default function ArcubeApp() {
       case 'active': return 'status-active';
       default: return 'status-default';
     }
+  };
+
+  // get order summary info
+  const getOrderSummary = (products) => {
+    const totalAmount = products.reduce((sum, p) => sum + p.price.amount, 0);
+    const activeCount = products.filter(p => p.simStatus === 'active').length;
+    const cancelledCount = products.filter(p => p.status === 'cancelled').length;
+    
+    return { totalAmount, activeCount, cancelledCount, totalCount: products.length };
   };
 
   return (
@@ -752,97 +837,139 @@ export default function ArcubeApp() {
                   <h2>My Orders</h2>
                   {customerOrders.length === 0 ? (
                     <div className="empty-state">
-                      <p>No orders yet. Get your amazing Ancelleires!</p>
+                      <p>No orders yet. Get your first eSIM!</p>
                       <button 
                         onClick={() => navigate('create-order')}
                         className="btn btn-primary"
                       >
-                        Buy ancillaries
+                        Buy eSIM
                       </button>
                     </div>
                   ) : (
                     <div className="orders-grid">
-                      {customerOrders.map((order) => (
-                        <div key={order._id} className="order-card">
-                          <div className="order-header">
-                            <h3>PNR: {order.pnr}</h3>
-                            <span className="order-date">
-                              {new Date(order.createdAt).toLocaleDateString()}
-                            </span>
-                          </div>
-                          {order.products.map((product) => (
-                            <div key={product.id} className="product-item">
-                              <div className="product-info">
-                                <h4>{product.title}</h4>
-                                <p className="price">${product.price.amount}</p>
-                                <div className="status-row">
-                                  <span className={`status-badge ${getStatusClass(product.status)}`}>
-                                    Payment: {product.status}
-                                  </span>
-                                  {product.simStatus && (
-                                    <span className={`status-badge ${getStatusClass(product.simStatus)}`}>
-                                      eSIM: {product.simStatus.replace('_', ' ')}
-                                    </span>
-                                  )}
-                                </div>
-                                {product.status === 'pending' && (
-                                  <div className="pending-info">
-                                    <small>Processing payment... (up to 15 seconds)</small>
-                                  </div>
-                                )}
+                      {customerOrders.map((order) => {
+                        const summary = getOrderSummary(order.products);
+                        return (
+                          <div key={order._id} className="order-card">
+                            <div className="order-header">
+                              <div className="order-header-main">
+                                <h3>PNR: {order.pnr}</h3>
+                                <span className="order-date">
+                                  {new Date(order.createdAt).toLocaleDateString()}
+                                </span>
                               </div>
-                              <div className="product-actions">
-                                {/* Activate button - show only for successful products with ready eSIM */}
-                                {product.simStatus === 'ready_for_activation' && product.status === 'success' && (
-                                  <button 
-                                    onClick={() => handleActivateEsim(order._id, product.id)}
-                                    className="btn btn-sm btn-success"
-                                    disabled={loading}
-                                  >
-                                    Activate eSIM
-                                  </button>
+                              <div className="order-summary-badges">
+                                <span className="summary-badge">
+                                  {summary.totalCount} product{summary.totalCount > 1 ? 's' : ''}
+                                </span>
+                                <span className="summary-badge total-amount">
+                                  Total: ${summary.totalAmount}
+                                </span>
+                                {summary.activeCount > 0 && (
+                                  <span className="summary-badge active-count">
+                                    {summary.activeCount} active
+                                  </span>
                                 )}
-                                
-                                {/* Cancel button - show for non-activated and non-cancelled products */}
-                                {product.simStatus !== 'active' && product.status !== 'cancelled' && product.status !== 'failed' && product.status !== 'denied' && (
-                                  <button 
-                                    onClick={() => handleCancelOrder(order, product.id)}
-                                    className="btn btn-sm btn-danger"
-                                    disabled={loading}
-                                  >
-                                    Cancel & Refund
-                                  </button>
-                                )}
-                                
-                                {/* Status messages */}
-                                {product.simStatus === 'active' && (
-                                  <div className="status-message success">
-                                    <small>eSIM is active and ready to use!</small>
-                                  </div>
-                                )}
-                                
-                                {product.status === 'failed' && (
-                                  <div className="status-message error">
-                                    <small>Payment failed. Contact support.</small>
-                                  </div>
-                                )}
-                                
-                                {product.status === 'denied' && (
-                                  <div className="status-message warning">
-                                    <small>Order denied due to compliance.</small>
-                                  </div>
-                                )}
-                                
-                                {product.status === 'cancelled' && (
-                                  <div className="status-message neutral">
-                                    <small>Order cancelled. Refund processing...</small>
-                                  </div>
+                                {summary.cancelledCount > 0 && (
+                                  <span className="summary-badge cancelled-count">
+                                    {summary.cancelledCount} cancelled
+                                  </span>
                                 )}
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      ))}
+                            
+                            {/* Bulk actions for orders with multiple products */}
+                            {order.products.length > 1 && (
+                              <div className="bulk-actions">
+                                <button 
+                                  onClick={() => handleBulkCancelOrder(order)}
+                                  className="btn btn-sm btn-warning"
+                                  disabled={loading || order.products.filter(p => 
+                                    p.simStatus !== 'active' && 
+                                    p.status !== 'cancelled' && 
+                                    p.status !== 'failed' && 
+                                    p.status !== 'denied'
+                                  ).length === 0}
+                                >
+                                  Cancel All Available Products
+                                </button>
+                              </div>
+                            )}
+
+                            {order.products.map((product) => (
+                              <div key={product.id} className="product-item">
+                                <div className="product-info">
+                                  <h4>{product.title}</h4>
+                                  <p className="price">${product.price.amount}</p>
+                                  <div className="status-row">
+                                    <span className={`status-badge ${getStatusClass(product.status)}`}>
+                                      Payment: {product.status}
+                                    </span>
+                                    {product.simStatus && (
+                                      <span className={`status-badge ${getStatusClass(product.simStatus)}`}>
+                                        eSIM: {product.simStatus.replace('_', ' ')}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {product.status === 'pending' && (
+                                    <div className="pending-info">
+                                      <small>Processing payment... (up to 15 seconds)</small>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="product-actions">
+                                  {/* Activate button - show only for successful products with ready eSIM */}
+                                  {product.simStatus === 'ready_for_activation' && product.status === 'success' && (
+                                    <button 
+                                      onClick={() => handleActivateEsim(order._id, product.id)}
+                                      className="btn btn-sm btn-success"
+                                      disabled={loading}
+                                    >
+                                      Activate eSIM
+                                    </button>
+                                  )}
+                                  
+                                  {/* Cancel button - show for non-activated and non-cancelled products */}
+                                  {product.simStatus !== 'active' && product.status !== 'cancelled' && product.status !== 'failed' && product.status !== 'denied' && (
+                                    <button 
+                                      onClick={() => handleCancelOrder(order, product.id)}
+                                      className="btn btn-sm btn-danger"
+                                      disabled={loading}
+                                    >
+                                      Cancel & Refund
+                                    </button>
+                                  )}
+                                  
+                                  {/* Status messages */}
+                                  {product.simStatus === 'active' && (
+                                    <div className="status-message success">
+                                      <small>eSIM is active and ready to use!</small>
+                                    </div>
+                                  )}
+                                  
+                                  {product.status === 'failed' && (
+                                    <div className="status-message error">
+                                      <small>Payment failed. Contact support.</small>
+                                    </div>
+                                  )}
+                                  
+                                  {product.status === 'denied' && (
+                                    <div className="status-message warning">
+                                      <small>Order denied due to compliance.</small>
+                                    </div>
+                                  )}
+                                  
+                                  {product.status === 'cancelled' && (
+                                    <div className="status-message neutral">
+                                      <small>Order cancelled. Refund processing...</small>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -851,12 +978,38 @@ export default function ArcubeApp() {
               {currentView === 'create-order' && user.role === 'customer' && (
                 <div className="section">
                   <h2>Buy eSIM</h2>
+                  
+                  {/* Selection Summary */}
+                  {selectedProducts.length > 0 && (
+                    <div className="selection-summary">
+                      <div className="selection-header">
+                        <h3>{selectedProducts.length} product{selectedProducts.length > 1 ? 's' : ''} selected</h3>
+                        <button onClick={clearSelectedProducts} className="btn btn-sm btn-secondary">
+                          Clear All
+                        </button>
+                      </div>
+                      <div className="selected-products">
+                        {selectedProducts.map(product => (
+                          <div key={product.id} className="selected-product-tag">
+                            <span>{product.title} - ${product.price.amount}</span>
+                            <button 
+                              onClick={() => handleProductToggle(product)}
+                              className="remove-product"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="products-grid">
                     {availableProducts.map((product) => (
                       <div 
                         key={product.id} 
-                        className={`product-selection-card ${selectedProduct?.id === product.id ? 'selected' : ''}`}
-                        onClick={() => setSelectedProduct(product)}
+                        className={`product-selection-card ${selectedProducts.some(p => p.id === product.id) ? 'selected' : ''}`}
+                        onClick={() => handleProductToggle(product)}
                       >
                         <h3>{product.title}</h3>
                         <p className="product-description">{product.description}</p>
@@ -868,23 +1021,30 @@ export default function ArcubeApp() {
                         <div className="product-price-large">
                           ${product.price.amount} {product.price.currency}
                         </div>
-                        {selectedProduct?.id === product.id && (
-                          <div className="selected-indicator">Selected</div>
+                        {selectedProducts.some(p => p.id === product.id) && (
+                          <div className="selected-indicator">
+                            ✓ Selected
+                          </div>
                         )}
                       </div>
                     ))}
                   </div>
                   
-                  {selectedProduct && (
+                  {selectedProducts.length > 0 && (
                     <div className="order-summary">
                       <h3>Order Summary</h3>
-                      <div className="summary-item">
-                        <span>Product:</span>
-                        <span>{selectedProduct.title}</span>
+                      <div className="summary-items">
+                        {selectedProducts.map(product => (
+                          <div key={product.id} className="summary-item">
+                            <span>{product.title}</span>
+                            <span>${product.price.amount} {product.price.currency}</span>
+                          </div>
+                        ))}
                       </div>
-                      <div className="summary-item">
-                        <span>Price:</span>
-                        <span>${selectedProduct.price.amount} {selectedProduct.price.currency}</span>
+                      <div className="summary-divider"></div>
+                      <div className="summary-item summary-total">
+                        <span>Total ({selectedProducts.length} product{selectedProducts.length > 1 ? 's' : ''}):</span>
+                        <span>${selectedProducts.reduce((sum, p) => sum + p.price.amount, 0)} USD</span>
                       </div>
                       <div className="summary-item">
                         <span>Customer:</span>
@@ -896,7 +1056,8 @@ export default function ArcubeApp() {
                         disabled={loading}
                         className="btn btn-primary btn-full order-btn"
                       >
-                        {loading ? 'Processing Order...' : `Buy Now - $${selectedProduct.price.amount}`}
+                        {loading ? 'Processing Order...' : 
+                         `Buy ${selectedProducts.length > 1 ? 'All' : 'Now'} - ${selectedProducts.reduce((sum, p) => sum + p.price.amount, 0)}`}
                       </button>
                     </div>
                   )}
@@ -936,7 +1097,7 @@ export default function ArcubeApp() {
                 </div>
               )}
 
-{currentView === 'admin-invitations' && user.role === 'admin' && (
+              {currentView === 'admin-invitations' && user.role === 'admin' && (
                 <div className="section">
                   <h2>Partner Invitations</h2>
                   <div className="form-card">
@@ -969,6 +1130,7 @@ export default function ArcubeApp() {
                   </div>
                 </div>
               )}
+              
               {currentView === 'admin-webhooks' && user.role === 'admin' && (
                 <div className="section">
                   <h2>Webhook Management</h2>

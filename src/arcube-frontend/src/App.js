@@ -10,17 +10,16 @@ export default function ArcubeApp() {
   const [error, setError] = useState('');
 
   const debugToken = (token) => {
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    console.log('FULL TOKEN PAYLOAD:', payload);
-    console.log('Available fields:', Object.keys(payload));
-    return payload;
-  } catch (error) {
-    console.error('Token decode error:', error);
-    return null;
-  }
-};
-
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      console.log('FULL TOKEN PAYLOAD:', payload);
+      console.log('Available fields:', Object.keys(payload));
+      return payload;
+    } catch (error) {
+      console.error('Token decode error:', error);
+      return null;
+    }
+  };
 
   // login form
   const [loginData, setLoginData] = useState({
@@ -38,35 +37,117 @@ export default function ArcubeApp() {
     invitationCode: ''
   });
 
-  // available products for order creation
+  // available products for order creation - expanded to include all ancillary services
   const [availableProducts] = useState([
+    // eSIM Products (Airalo)
     {
       id: 'esim-usa-5gb',
       title: 'eSIM USA - 5GB 30 Days',
       type: 'esim',
+      provider: 'airalo',
       price: { amount: 22, currency: 'USD' },
       description: 'High-speed data for United States',
-      features: ['5GB Data', '30 Days Validity', 'Instant Activation']
+      features: ['5GB Data', '30 Days Validity', 'Instant Activation'],
+      category: 'connectivity'
     },
     {
       id: 'esim-europe-10gb',
       title: 'eSIM Europe - 10GB 15 Days',
       type: 'esim',
+      provider: 'airalo',
       price: { amount: 35, currency: 'USD' },
       description: 'Coverage across 30+ European countries',
-      features: ['10GB Data', '15 Days Validity', 'Multi-country']
+      features: ['10GB Data', '15 Days Validity', 'Multi-country'],
+      category: 'connectivity'
     },
     {
       id: 'esim-global-3gb',
       title: 'eSIM Global - 3GB 7 Days',
       type: 'esim',
+      provider: 'airalo',
       price: { amount: 18, currency: 'USD' },
       description: 'Works in 100+ countries worldwide',
-      features: ['3GB Data', '7 Days Validity', 'Global Coverage']
+      features: ['3GB Data', '7 Days Validity', 'Global Coverage'],
+      category: 'connectivity'
+    },
+    
+    // Airport Transfer Services (Mozio)
+    {
+      id: 'transfer-jfk-manhattan',
+      title: 'JFK Airport Transfer to Manhattan',
+      type: 'airport_transfer',
+      provider: 'mozio',
+      price: { amount: 85, currency: 'USD' },
+      description: 'Premium sedan transfer from JFK Airport',
+      features: ['Meet & Greet', '4 Passengers', 'Flight Tracking', '24/7 Support'],
+      category: 'transport'
+    },
+    {
+      id: 'transfer-lax-downtown',
+      title: 'LAX Airport Transfer to Downtown LA',
+      type: 'airport_transfer',
+      provider: 'mozio',
+      price: { amount: 75, currency: 'USD' },
+      description: 'Comfortable ride from LAX to city center',
+      features: ['Professional Driver', '3 Passengers', 'Free Waiting', 'Fixed Price'],
+      category: 'transport'
+    },
+    {
+      id: 'transfer-lhr-central',
+      title: 'Heathrow Transfer to Central London',
+      type: 'airport_transfer',
+      provider: 'mozio',
+      price: { amount: 95, currency: 'USD' },
+      description: 'Direct transfer from LHR to London city',
+      features: ['Executive Vehicle', '4 Passengers', 'Flight Monitor', 'English Speaking'],
+      category: 'transport'
+    },
+    
+    // Lounge Access (DragonPass)
+    {
+      id: 'lounge-jfk-centurion',
+      title: 'JFK Centurion Lounge Access',
+      type: 'lounge_access',
+      provider: 'dragonpass',
+      price: { amount: 45, currency: 'USD' },
+      description: 'Premium lounge access at JFK Terminal 4',
+      features: ['3 Hours Access', 'Food & Drinks', 'WiFi & Showers', 'Business Center'],
+      category: 'comfort'
+    },
+    {
+      id: 'lounge-lax-star-alliance',
+      title: 'LAX Star Alliance Lounge',
+      type: 'lounge_access',
+      provider: 'dragonpass',
+      price: { amount: 55, currency: 'USD' },
+      description: 'Star Alliance lounge at LAX Terminal 2',
+      features: ['4 Hours Access', 'Premium Dining', 'Quiet Zones', 'City Views'],
+      category: 'comfort'
+    },
+    {
+      id: 'lounge-lhr-plaza-premium',
+      title: 'Heathrow Plaza Premium Lounge',
+      type: 'lounge_access',
+      provider: 'dragonpass',
+      price: { amount: 65, currency: 'USD' },
+      description: 'Plaza Premium Lounge at Heathrow T5',
+      features: ['5 Hours Access', 'Spa Services', 'Meeting Rooms', 'Kids Area'],
+      category: 'comfort'
+    },
+    {
+      id: 'lounge-dxb-emirates',
+      title: 'Dubai Emirates Business Lounge',
+      type: 'lounge_access',
+      provider: 'dragonpass',
+      price: { amount: 85, currency: 'USD' },
+      description: 'Luxury Emirates lounge at Dubai International',
+      features: ['6 Hours Access', 'A la carte Dining', 'Cigar Bar', 'Shower Suites'],
+      category: 'comfort'
     }
   ]);
 
-  const [selectedProducts, setSelectedProducts] = useState([]); // Changed from selectedProduct to selectedProducts array
+  const [selectedProducts, setSelectedProducts] = useState([]);
+  const [productFilter, setProductFilter] = useState('all');
 
   // customer orders
   const [customerOrders, setCustomerOrders] = useState([]);
@@ -91,49 +172,47 @@ export default function ArcubeApp() {
 
   // check if user is logged in on mount
   useEffect(() => {
-  if (token) {
-    try {
-      const payload = debugToken(token); // Use the debug function first
-      
-      if (!payload) {
+    if (token) {
+      try {
+        const payload = debugToken(token);
+        
+        if (!payload) {
+          handleLogout();
+          return;
+        }
+        
+        const userRole = payload.role || payload.userRole || payload.type || 'customer';
+        const userId = payload.userId || payload.id || payload.sub || payload.user_id;
+        const userEmail = payload.email || payload.user_email;
+        
+        console.log('Extracted values:', {
+          role: userRole,
+          userId: userId,
+          email: userEmail
+        });
+        
+        setUser({
+          email: userEmail,
+          role: userRole,
+          userId: userId,
+          firstName: payload.firstName || payload.first_name,
+          lastName: payload.lastName || payload.last_name
+        });
+        
+        console.log('Setting view for role:', userRole);
+        if (userRole === 'admin') {
+          setCurrentView('admin-dashboard');
+        } else if (userRole === 'partner') {
+          setCurrentView('partner-dashboard');
+        } else {
+          setCurrentView('my-orders');
+        }
+      } catch (error) {
+        console.error('Invalid token:', error);
         handleLogout();
-        return;
       }
-      
-      // Try different possible role field names
-      const userRole = payload.role || payload.userRole || payload.type || 'customer';
-      const userId = payload.userId || payload.id || payload.sub || payload.user_id;
-      const userEmail = payload.email || payload.user_email;
-      
-      console.log('Extracted values:', {
-        role: userRole,
-        userId: userId,
-        email: userEmail
-      });
-      
-      setUser({
-        email: userEmail,
-        role: userRole,
-        userId: userId,
-        firstName: payload.firstName || payload.first_name,
-        lastName: payload.lastName || payload.last_name
-      });
-      
-      // Set initial view based on role
-      console.log('Setting view for role:', userRole);
-      if (userRole === 'admin') {
-        setCurrentView('admin-dashboard');
-      } else if (userRole === 'partner') {
-        setCurrentView('partner-dashboard');
-      } else {
-        setCurrentView('my-orders');
-      }
-    } catch (error) {
-      console.error('Invalid token:', error);
-      handleLogout();
     }
-  }
-}, [token]);
+  }, [token]);
 
   // clear messages
   const clearMessages = () => {
@@ -143,66 +222,63 @@ export default function ArcubeApp() {
 
   // login handler
   const handleLogin = async () => {
-  setLoading(true);
-  clearMessages();
-  
-  try {
-    const res = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(loginData)
-    });
+    setLoading(true);
+    clearMessages();
     
-    const result = await res.json();
-    console.log('Login response:', result);
-    
-    if (result.success) {
-      const token = result.data.token;
-      const userData = result.data.user;
-      
-      console.log('User data from login:', userData);
-      
-      // Debug the token immediately after successful login
-      const tokenPayload = debugToken(token);
-      console.log('Token payload vs user data:', {
-        tokenPayload,
-        userData
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginData)
       });
       
-      setToken(token);
-      localStorage.setItem('token', token);
+      const result = await res.json();
+      console.log('Login response:', result);
       
-      // Use the user data from the response, not just the token
-      const finalUser = {
-        email: userData.email || tokenPayload.email,
-        role: userData.role || tokenPayload.role || 'customer',
-        userId: userData.userId || userData._id || userData.id || tokenPayload.userId,
-        firstName: userData.firstName,
-        lastName: userData.lastName
-      };
-      
-      console.log('Final user object:', finalUser);
-      setUser(finalUser);
-      
-      // Navigate based on the confirmed role
-      if (finalUser.role === 'admin') {
-        setCurrentView('admin-dashboard');
-      } else if (finalUser.role === 'partner') {
-        setCurrentView('partner-dashboard');
+      if (result.success) {
+        const token = result.data.token;
+        const userData = result.data.user;
+        
+        console.log('User data from login:', userData);
+        
+        const tokenPayload = debugToken(token);
+        console.log('Token payload vs user data:', {
+          tokenPayload,
+          userData
+        });
+        
+        setToken(token);
+        localStorage.setItem('token', token);
+        
+        const finalUser = {
+          email: userData.email || tokenPayload.email,
+          role: userData.role || tokenPayload.role || 'customer',
+          userId: userData.userId || userData._id || userData.id || tokenPayload.userId,
+          firstName: userData.firstName,
+          lastName: userData.lastName
+        };
+        
+        console.log('Final user object:', finalUser);
+        setUser(finalUser);
+        
+        if (finalUser.role === 'admin') {
+          setCurrentView('admin-dashboard');
+        } else if (finalUser.role === 'partner') {
+          setCurrentView('partner-dashboard');
+        } else {
+          setCurrentView('my-orders');
+        }
+        
+        setResponse(`Welcome back, ${finalUser.firstName || finalUser.email}!`);
       } else {
-        setCurrentView('my-orders');
+        setError(result.error || 'Login failed');
       }
-      
-      setResponse(`Welcome back, ${finalUser.firstName || finalUser.email}!`);
-    } else {
-      setError(result.error || 'Login failed');
+    } catch (error) {
+      console.error('Login error:', error);
+      setError('Network error. Please try again.');
     }
-  } catch (error) {
-    console.error('Login error:', error);
-    setError('Network error. Please try again.');
-  }
-  setLoading(false);
-};
+    setLoading(false);
+  };
 
   // signup handler
   const handleSignup = async () => {
@@ -253,6 +329,11 @@ export default function ArcubeApp() {
   const clearSelectedProducts = () => {
     setSelectedProducts([]);
   };
+
+  // filter products based on selected category
+  const filteredProducts = productFilter === 'all' 
+    ? availableProducts 
+    : availableProducts.filter(product => product.category === productFilter);
 
   // create order handler - updated to handle multiple products
   const handleCreateOrder = async () => {
@@ -338,7 +419,7 @@ export default function ArcubeApp() {
       const payload = {
         orderIdentifier: {
           pnr: order.pnr,
-          orderId: order._id, // Add orderId to the identifier
+          orderId: order._id,
           ...(user.role === 'customer' && { email: order.customer.email })
         },
         productId: productId,
@@ -365,7 +446,6 @@ export default function ArcubeApp() {
           ` Refund: $${result.data.refundAmount}` : ' No refund available';
         setResponse(`Cancellation successful!${refundMsg}`);
         
-        // reload relevant data
         if (user.role === 'customer') loadCustomerOrders();
         if (user.role === 'admin') loadAdminData();
         if (user.role === 'partner') loadPartnerData();
@@ -583,7 +663,6 @@ export default function ArcubeApp() {
     setCurrentView('login');
     setResponse('Logged out successfully');
     
-    // clear all data
     setCustomerOrders([]);
     setAdminStats({});
     setWebhooks([]);
@@ -624,7 +703,7 @@ export default function ArcubeApp() {
     <div className="app">
       <header className="header">
         <div className="header-content">
-          <h1>Arcube eSIM Service</h1>
+          <h1>Arcube Ancillaries Service</h1>
           
           {user && (
             <div className="user-info">
@@ -640,7 +719,6 @@ export default function ArcubeApp() {
 
       <div className="container">
         {!user ? (
-          // Authentication Views
           <div className="auth-container">
             <div className="auth-tabs">
               <button 
@@ -769,7 +847,6 @@ export default function ArcubeApp() {
             )}
           </div>
         ) : (
-          // Main Application
           <div className="main-content">
             <nav className="sidebar">
               {user.role === 'customer' && (
@@ -784,7 +861,7 @@ export default function ArcubeApp() {
                     className={`nav-btn ${currentView === 'create-order' ? 'active' : ''}`}
                     onClick={() => navigate('create-order')}
                   >
-                    Buy Ancelleires
+                    Buy Ancillaries
                   </button>
                 </>
               )}
@@ -837,12 +914,12 @@ export default function ArcubeApp() {
                   <h2>My Orders</h2>
                   {customerOrders.length === 0 ? (
                     <div className="empty-state">
-                      <p>No orders yet. Get your first eSIM!</p>
+                      <p>No orders yet. Get your first travel services!</p>
                       <button 
                         onClick={() => navigate('create-order')}
                         className="btn btn-primary"
                       >
-                        Buy eSIM
+                        Buy Services
                       </button>
                     </div>
                   ) : (
@@ -905,7 +982,7 @@ export default function ArcubeApp() {
                                     <span className={`status-badge ${getStatusClass(product.status)}`}>
                                       Payment: {product.status}
                                     </span>
-                                    {product.simStatus && (
+                                    {product.simStatus && product.provider === 'airalo' && (
                                       <span className={`status-badge ${getStatusClass(product.simStatus)}`}>
                                         eSIM: {product.simStatus.replace('_', ' ')}
                                       </span>
@@ -919,7 +996,7 @@ export default function ArcubeApp() {
                                 </div>
                                 <div className="product-actions">
                                   {/* Activate button - show only for successful products with ready eSIM */}
-                                  {product.simStatus === 'ready_for_activation' && product.status === 'success' && (
+                                  {product.simStatus === 'ready_for_activation' && product.status === 'success' && product.provider === 'airalo' && (
                                     <button 
                                       onClick={() => handleActivateEsim(order._id, product.id)}
                                       className="btn btn-sm btn-success"
@@ -977,13 +1054,43 @@ export default function ArcubeApp() {
 
               {currentView === 'create-order' && user.role === 'customer' && (
                 <div className="section">
-                  <h2>Buy eSIM</h2>
+                  <h2>Buy Travel Services</h2>
+                  
+                  {/* Product Category Filter */}
+                  <div className="product-filters">
+                    <div className="filter-tabs">
+                      <button 
+                        className={`filter-tab ${productFilter === 'all' ? 'active' : ''}`}
+                        onClick={() => setProductFilter('all')}
+                      >
+                        All Services ({availableProducts.length})
+                      </button>
+                      <button 
+                        className={`filter-tab ${productFilter === 'connectivity' ? 'active' : ''}`}
+                        onClick={() => setProductFilter('connectivity')}
+                      >
+                        eSIM & Data ({availableProducts.filter(p => p.category === 'connectivity').length})
+                      </button>
+                      <button 
+                        className={`filter-tab ${productFilter === 'transport' ? 'active' : ''}`}
+                        onClick={() => setProductFilter('transport')}
+                      >
+                        Airport Transfers ({availableProducts.filter(p => p.category === 'transport').length})
+                      </button>
+                      <button 
+                        className={`filter-tab ${productFilter === 'comfort' ? 'active' : ''}`}
+                        onClick={() => setProductFilter('comfort')}
+                      >
+                        Lounge Access ({availableProducts.filter(p => p.category === 'comfort').length})
+                      </button>
+                    </div>
+                  </div>
                   
                   {/* Selection Summary */}
                   {selectedProducts.length > 0 && (
                     <div className="selection-summary">
                       <div className="selection-header">
-                        <h3>{selectedProducts.length} product{selectedProducts.length > 1 ? 's' : ''} selected</h3>
+                        <h3>{selectedProducts.length} service{selectedProducts.length > 1 ? 's' : ''} selected</h3>
                         <button onClick={clearSelectedProducts} className="btn btn-sm btn-secondary">
                           Clear All
                         </button>
@@ -1005,12 +1112,15 @@ export default function ArcubeApp() {
                   )}
 
                   <div className="products-grid">
-                    {availableProducts.map((product) => (
+                    {filteredProducts.map((product) => (
                       <div 
                         key={product.id} 
                         className={`product-selection-card ${selectedProducts.some(p => p.id === product.id) ? 'selected' : ''}`}
                         onClick={() => handleProductToggle(product)}
                       >
+                        <div className="product-provider-badge">
+                          {product.provider}
+                        </div>
                         <h3>{product.title}</h3>
                         <p className="product-description">{product.description}</p>
                         <div className="product-features">
@@ -1043,7 +1153,7 @@ export default function ArcubeApp() {
                       </div>
                       <div className="summary-divider"></div>
                       <div className="summary-item summary-total">
-                        <span>Total ({selectedProducts.length} product{selectedProducts.length > 1 ? 's' : ''}):</span>
+                        <span>Total ({selectedProducts.length} service{selectedProducts.length > 1 ? 's' : ''}):</span>
                         <span>${selectedProducts.reduce((sum, p) => sum + p.price.amount, 0)} USD</span>
                       </div>
                       <div className="summary-item">

@@ -604,6 +604,53 @@ body {
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* Product Filters */
+.product-filters {
+  margin-bottom: 32px;
+}
+
+.filter-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-tab {
+  padding: 12px 20px;
+  border: 2px solid #e1e5e9;
+  border-radius: 25px;
+  background: #fff;
+  color: #666;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-tab:hover {
+  border-color: #3498db;
+  color: #3498db;
+}
+
+.filter-tab.active {
+  background: #3498db;
+  border-color: #3498db;
+  color: #fff;
+}
+
+.product-provider-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
 /* Product Selection Cards */
 .products-grid {
   display: grid;

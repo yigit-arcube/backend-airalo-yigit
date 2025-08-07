@@ -63,7 +63,8 @@ export default function ArcubeApp() {
       price: { amount: 18, currency: 'USD' },
       description: 'Works in 100+ countries worldwide',
       features: ['3GB Data', '7 Days Validity', 'Global Coverage']
-    }
+    },
+    //new ancilleries to be added
   ]);
 
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -162,7 +163,7 @@ export default function ArcubeApp() {
       
       console.log('User data from login:', userData);
       
-      // Debug the token immediately
+      // Debug the token immediately after successful login
       const tokenPayload = debugToken(token);
       console.log('Token payload vs user data:', {
         tokenPayload,
@@ -584,10 +585,10 @@ export default function ArcubeApp() {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Password</label>
+                  <label>PNR</label>
                   <input
                     type="password"
-                    placeholder="Enter your password"
+                    placeholder="Enter your PNR"
                     value={loginData.password}
                     onChange={(e) => setLoginData({...loginData, password: e.target.value})}
                   />
@@ -653,7 +654,7 @@ export default function ArcubeApp() {
                   <label>Password</label>
                   <input
                     type="password"
-                    placeholder="Create a password"
+                    placeholder="Enter your PNR code"
                     value={signupData.password}
                     onChange={(e) => setSignupData({...signupData, password: e.target.value})}
                   />
@@ -698,7 +699,7 @@ export default function ArcubeApp() {
                     className={`nav-btn ${currentView === 'create-order' ? 'active' : ''}`}
                     onClick={() => navigate('create-order')}
                   >
-                    Buy eSIM
+                    Buy Ancelleires
                   </button>
                 </>
               )}
@@ -751,12 +752,12 @@ export default function ArcubeApp() {
                   <h2>My Orders</h2>
                   {customerOrders.length === 0 ? (
                     <div className="empty-state">
-                      <p>No orders yet. Get your first eSIM!</p>
+                      <p>No orders yet. Get your amazing Ancelleires!</p>
                       <button 
                         onClick={() => navigate('create-order')}
                         className="btn btn-primary"
                       >
-                        Buy eSIM
+                        Buy ancillaries
                       </button>
                     </div>
                   ) : (
